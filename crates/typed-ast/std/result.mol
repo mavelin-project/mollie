@@ -1,0 +1,59 @@
+import { Option } from super::option;
+
+// The result of an operation that can fail: `Ok { value }` or
+// `Err { error }`. `result?` is the value, or returns the error.
+@[lang_item = "Result"]
+value enum Result<T, E> {
+    Ok { value: T },
+    Err { error: E },
+}
+
+impl<T, E> Result<T, E> {
+    func is_ok(self) -> bool {
+        self is Ok
+    }
+
+    func is_err(self) -> bool {
+        self is Err
+    }
+
+    // The value, if the operation succeeded.
+    func ok(self) -> Option<T> {
+        match self {
+            Ok { value } => Option::Some { value },
+            Err => Option::None,
+        }
+    }
+
+    // The error, if the operation failed.
+    func err(self) -> Option<E> {
+        match self {
+            Ok => Option::None,
+            Err { error } => Option::Some { value: error },
+        }
+    }
+
+    // The value. Stops the program if the operation failed.
+    func unwrap(self) -> T {
+        match self {
+            Ok { value } => value,
+            Err => panic("called `unwrap` on an error"),
+        }
+    }
+
+    // The value. Stops the program with `message` if the operation failed.
+    func expect(self, message: string) -> T {
+        match self {
+            Ok { value } => value,
+            Err => panic(message),
+        }
+    }
+
+    // The value, or `default` if the operation failed.
+    func unwrap_or(self, default: T) -> T {
+        match self {
+            Ok { value } => value,
+            Err => default,
+        }
+    }
+}

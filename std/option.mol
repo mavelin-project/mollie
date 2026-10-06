@@ -1,7 +1,0 @@
-@[lang_item = "Option"]
-enum Option<T> {
-    @[lang_item = "Option::Some"]
-    Some { value: T },
-    @[lang_item = "Option::None"]
-    None,
-}

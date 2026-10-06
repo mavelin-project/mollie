@@ -18,6 +18,38 @@ pub struct BinaryExpr {
 //     }
 // }
 
+/// `start..end` or `start..=end` (`inclusive`).
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+pub struct RangeExpr {
+    pub start: Box<Positioned<Expr>>,
+    pub end: Box<Positioned<Expr>>,
+    pub inclusive: bool,
+}
+
+impl RangeExpr {
+    /// Parses the operator and the end of a range starting with `start`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError` if parsing failed
+    pub fn parse(parser: &mut Parser, start: Positioned<Expr>, is_limited_expr: bool) -> ParseResult<Positioned<Self>> {
+        let inclusive = parser
+            .consume_map(|token| match token {
+                Token::DotDot => Some(false),
+                Token::DotDotEq => Some(true),
+                _ => None,
+            })?
+            .value;
+        let end = Expr::parse_pratt_expr(parser, Precedence::PRange, is_limited_expr)?;
+
+        Ok(start.between(&end).wrap(Self {
+            start: Box::new(start),
+            end: Box::new(end),
+            inclusive,
+        }))
+    }
+}
+
 impl BinaryExpr {
     /// # Errors
     ///

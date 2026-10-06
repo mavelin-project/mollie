@@ -1,0 +1,42 @@
+// An optional value: `Some { value }` or `None`.
+@[lang_item = "Option"]
+value enum Option<T> {
+    @[lang_item = "Option::Some"]
+    Some { value: T },
+    @[lang_item = "Option::None"]
+    None,
+}
+
+impl<T> Option<T> {
+    func is_some(self) -> bool {
+        self is Some
+    }
+
+    func is_none(self) -> bool {
+        self is None
+    }
+
+    // The value. Stops the program if there's none.
+    func unwrap(self) -> T {
+        match self {
+            Some { value } => value,
+            None => panic("called `unwrap` on `None`"),
+        }
+    }
+
+    // The value. Stops the program with `message` if there's none.
+    func expect(self, message: string) -> T {
+        match self {
+            Some { value } => value,
+            None => panic(message),
+        }
+    }
+
+    // The value, or `default` if there's none.
+    func unwrap_or(self, default: T) -> T {
+        match self {
+            Some { value } => value,
+            None => default,
+        }
+    }
+}

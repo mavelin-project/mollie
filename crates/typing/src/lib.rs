@@ -1,4 +1,5 @@
 mod adt;
+mod diagnostic;
 mod error;
 mod primitive_type;
 mod solver;
@@ -10,24 +11,26 @@ use mollie_index::new_idx_type;
 
 pub use self::{
     adt::{Adt, AdtKind, AdtVariant, AdtVariantField},
-    error::{LookupType, SpecialAdtKind, TypeError, TypeErrorValue},
+    diagnostic::{Diagnostic, DiagnosticContext, DiagnosticDisplay},
+    error::{DefinitionType, LookupType, SpecialAdtKind, TypeError, TypeErrorValue},
     primitive_type::{IntType, PrimitiveType, UIntType},
-    solver::{TypeFrameRef, TypeSolver},
+    solver::{TypeFrameRef, TypeSolver, UnifyArgs, UnifyError},
     ty::{Type, TypeRef},
     type_context::{
-        Func, IntrinsicKind, LangItemValue, Module, ModuleDisplay, ModuleItem, Trait, TraitFunc, TypeContext, TypeDisplay, TypeStorage, VTableFunc,
-        VTableGenerator,
+        Bound, Const, DefRegistry, Func, ImplRegistry, IntrinsicKind, LangItemValue, LookupError, Module, ModuleDisplay, ModuleItem, ModuleSpan, Trait,
+        TraitFunc, TyCtxt, TypeDisplay, TypeStorage, VTableFunc, VTableGenerator,
     },
-    type_info::{TypeInfo, TypeInfoRef},
+    type_info::{AdtTypeInfo, ArrayTypeInfo, FuncTypeInfo, TraitTypeInfo, TypeInfo, TypeInfoRef},
 };
 
 new_idx_type!(AdtRef);
 new_idx_type!(AdtVariantRef);
 new_idx_type!(FieldRef);
 new_idx_type!(TraitRef);
-new_idx_type!(VTableRef);
+new_idx_type!(ImplRef);
 new_idx_type!(VFuncRef);
 new_idx_type!(FuncRef);
+new_idx_type!(ConstRef);
 new_idx_type!(TraitFuncRef);
 new_idx_type!(ModuleId);
 new_idx_type!(TypeErrorRef);

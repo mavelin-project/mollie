@@ -1,0 +1,13 @@
+// The standard library. Items of `prelude` are visible in every module.
+
+module option;
+module result;
+module iter;
+module container;
+module range;
+module math;
+module hash;
+module array;
+module string;
+module collections;
+module prelude;

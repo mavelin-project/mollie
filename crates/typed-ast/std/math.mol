@@ -1,0 +1,164 @@
+// Numbers: comparing and combining them, and functions of floats that are
+// the same on every platform.
+
+// Mathematical constants.
+const PI: f32 = 3.14159265;
+const TAU: f32 = 6.28318531;
+const E: f32 = 2.71828183;
+
+impl i8 {
+    // The value without its sign.
+    func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i16 {
+    // The value without its sign.
+    func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i32 {
+    // The value without its sign.
+    func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i64 {
+    // The value without its sign.
+    func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl isize {
+    // The value without its sign.
+    func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u8 {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u16 {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u32 {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u64 {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl usize {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl f32 {
+    // The smaller of the values.
+    func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+
+    // The nearest integer, halfway cases away from zero.
+    func round(self) -> Self {
+        let whole = self.trunc();
+
+        if (self - whole).abs() >= 0.5 {
+            if self < 0.0 { whole - 1.0 } else { whole + 1.0 }
+        } else {
+            whole
+        }
+    }
+
+    // The value `t` of the way from this one to `to`.
+    func lerp(self, to: Self, t: Self) -> Self { self + (to - self) * t }
+
+    // -1, 0 or 1, by the sign of the value.
+    func signum(self) -> Self { if self > 0.0 { 1.0 } else if self < 0.0 { -1.0 } else { 0.0 } }
+
+    func to_radians(self) -> Self { self * PI / 180.0 }
+
+    func to_degrees(self) -> Self { self * 180.0 / PI }
+}

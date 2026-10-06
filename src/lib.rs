@@ -6,58 +6,125 @@ pub use mollie_index as index;
 pub use mollie_ir as ir;
 pub use mollie_parser as parser;
 pub use mollie_shared as shared;
+use mollie_shared::Span;
 pub use mollie_typed_ast as typed_ast;
 pub use mollie_typing as typing;
+
+pub mod host;
+pub mod stub;
 
 use self::{
     compiler::{
         CompiledAdt,
-        allocator::{GcValue, TypeLayout, alloc, unmark_root},
+        allocator::{Array, GcValue, HEADER_SIZE, Heap, TypeLayout},
+        sandbox,
     },
     constants::ConstantValue,
     index::{Idx, IndexBoxedSlice, IndexVec},
     typed_ast::{FunctionBody, TypedASTContext},
     typing::{
-        Adt, AdtKind, AdtRef, AdtVariant, AdtVariantField, AdtVariantRef, Arg, ArgType, FieldRef, IntType, ModuleId, PrimitiveType, Trait, TraitFunc,
-        TraitFuncRef, TraitRef, Type, TypeContext, TypeRef, UIntType, VFuncRef, VTableFunc, VTableGenerator, VTableRef,
+        Adt, AdtKind, AdtRef, AdtVariant, AdtVariantField, AdtVariantRef, Arg, ArgType, FieldRef, ImplRef, IntType, ModuleId, PrimitiveType, Trait, TraitFunc,
+        TraitFuncRef, TraitRef, TyCtxt, Type, TypeRef, UIntType, VFuncRef, VTableFunc, VTableGenerator,
     },
 };
 
+/// A pointer to the value of a GC object.
+///
+/// It doesn't keep the object alive: values passed between the host and
+/// compiled code are `GcPtr`s. To keep an object alive while the host holds
+/// it, use [`GcPtr::root`].
 #[repr(transparent)]
 pub struct GcPtr<T>(*mut GcValue<T>);
 
-impl<T> GcPtr<T> {
+impl<T> Clone for GcPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for GcPtr<T> {}
+
+/// Runs `f` with the heap of the running program.
+///
+/// # Panics
+///
+/// Panics if no program runs on this thread: values of programs can only be
+/// created while their program runs (e.g. in host functions or in
+/// `Compiler::run`), or with the `*_in` functions taking a heap.
+fn in_running_heap<R>(f: impl FnOnce(&Heap) -> R) -> R {
+    sandbox::with_current_heap(f).expect("no program is running: use the `*_in` functions with the program's heap")
+}
+
+impl<T: 'static> GcPtr<T> {
+    /// Allocates a GC object holding `value` in the heap of the running
+    /// program. It survives the next collection even without being rooted, so
+    /// it can be passed to compiled code.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no program runs on this thread (see [`GcPtr::new_in`]).
     pub fn from(value: T) -> Self {
-        let layout = Box::leak::<'static>(Box::new(TypeLayout::of::<T>()));
-        let result_value = unsafe { alloc(layout) };
+        in_running_heap(|heap| Self::new_in(heap, value))
+    }
 
-        unsafe {
-            *result_value.cast::<T>() = value;
-        }
+    /// Allocates a GC object holding `value` in `heap` (see
+    /// [`GcPtr::from`]).
+    pub fn new_in(heap: &Heap, value: T) -> Self {
+        // SAFETY: the layout is interned in the heap.
+        unsafe { Self::from_parts_in(heap, value, heap.layout_of::<T>()) }
+    }
+}
+
+impl<T> GcPtr<T> {
+    /// Allocates a GC object holding `value` with the layout of a compiled
+    /// type (see `CompiledAdt::type_layout`) in the heap of the running
+    /// program.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no program runs on this thread.
+    ///
+    /// # Safety
+    ///
+    /// `layout` must be a layout of the running program's compiler, describing
+    /// `T`.
+    pub unsafe fn from_parts(value: T, layout: &'static TypeLayout) -> Self {
+        in_running_heap(|heap| unsafe { Self::from_parts_in(heap, value, layout) })
+    }
+
+    /// Allocates a GC object holding `value` with `layout` in `heap`.
+    ///
+    /// # Safety
+    ///
+    /// `layout` must be a layout of the heap's compiler (or interned in the
+    /// heap), describing `T`.
+    pub unsafe fn from_parts_in(heap: &Heap, value: T, layout: &'static TypeLayout) -> Self {
+        let result_value = unsafe { heap.alloc(layout, false) };
+
+        // The memory is zeroed, not a valid `T`, so it must not be dropped.
+        unsafe { result_value.cast::<T>().write(value) };
 
         Self(result_value.cast())
     }
 
-    pub fn from_parts(value: T, layout: &'static TypeLayout) -> Self {
-        let result_value = unsafe { alloc(layout) };
+    /// Keeps the object (of `heap`) alive until the returned guard is
+    /// dropped.
+    pub fn root(self, heap: &Heap) -> GcRoot<'_, T> {
+        heap.root(self.0.cast());
 
-        unsafe {
-            *result_value.cast::<T>() = value;
-        }
-
-        Self(result_value.cast())
+        GcRoot { ptr: self, heap }
     }
 
-    pub fn ptr(&self) -> *const T {
+    pub const fn ptr(&self) -> *const T {
         self.0.cast()
     }
 
-    pub fn ptr_mut(&mut self) -> *mut T {
+    pub const fn ptr_mut(&mut self) -> *mut T {
         self.0.cast()
     }
 
     pub fn type_layout(&self) -> &'static TypeLayout {
-        unsafe { self.0.byte_sub(std::mem::offset_of!(GcValue<()>, value)).read().layout }
+        unsafe { (*self.0.cast::<u8>().wrapping_sub(HEADER_SIZE).cast::<GcValue<()>>()).layout }
     }
 
     pub fn adt_variant(&self) -> AdtVariantRef {
@@ -90,24 +157,29 @@ impl<T> GcPtr<T> {
         unsafe { self.0.byte_add(field.offset as usize).cast::<F>().as_mut() }
     }
 
-    pub fn get_slice<F>(&self, adt: &CompiledAdt, field: FieldRef) -> Option<&[F]> {
+    /// Reads a field holding an array (a pointer to a GC array).
+    fn array_field(&self, adt: &CompiledAdt, field: FieldRef) -> Option<*mut Array> {
         assert_eq!(self.type_layout(), adt.type_layout);
 
         let field = &adt.variants[self.adt_variant()].fields[field].0;
 
-        assert_eq!(size_of::<&[F]>(), field.ty.bytes() as usize);
+        assert_eq!(size_of::<*mut Array>(), field.ty.bytes() as usize);
 
-        unsafe { Some(self.0.byte_add(field.offset as usize).cast::<&[F]>().read()) }
+        let array = unsafe { self.0.byte_add(field.offset as usize).cast::<*mut Array>().read() };
+
+        (!array.is_null()).then_some(array)
+    }
+
+    pub fn get_slice<F>(&self, adt: &CompiledAdt, field: FieldRef) -> Option<&[F]> {
+        let array = unsafe { &*self.array_field(adt, field)? };
+
+        Some(unsafe { std::slice::from_raw_parts(array.ptr.cast::<F>(), array.length) })
     }
 
     pub fn get_slice_mut<F>(&mut self, adt: &CompiledAdt, field: FieldRef) -> Option<&mut [F]> {
-        assert_eq!(self.type_layout(), adt.type_layout);
+        let array = unsafe { &*self.array_field(adt, field)? };
 
-        let field = &adt.variants[self.adt_variant()].fields[field].0;
-
-        assert_eq!(size_of::<&mut [F]>(), field.ty.bytes() as usize);
-
-        unsafe { Some(self.0.byte_add(field.offset as usize).cast::<&mut [F]>().read()) }
+        Some(unsafe { std::slice::from_raw_parts_mut(array.ptr.cast::<F>(), array.length) })
     }
 }
 
@@ -134,9 +206,91 @@ impl<T> Deref for GcPtr<T> {
     }
 }
 
-impl<T> Drop for GcPtr<T> {
+/// A Mollie string, as passed between the host and compiled code: a pointer
+/// to an immutable string.
+///
+/// Like [`GcPtr`], it doesn't keep the string alive.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct MolStr(*const Array);
+
+impl MolStr {
+    /// Allocates a string holding `text` in the heap of the running program.
+    /// It survives the next collection even without being rooted, so it can
+    /// be passed to compiled code.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no program runs on this thread (see [`MolStr::new_in`]).
+    pub fn new(text: &str) -> Self {
+        in_running_heap(|heap| Self::new_in(heap, text))
+    }
+
+    /// Allocates a string holding `text` in `heap`.
+    pub fn new_in(heap: &Heap, text: &str) -> Self {
+        Self(compiler::strings::new(heap, text))
+    }
+
+    pub const fn ptr(&self) -> *const Array {
+        self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        // SAFETY: values of `MolStr` are only created from strings.
+        unsafe { compiler::strings::as_str(self.0) }
+    }
+
+    /// Keeps the string (of `heap`) alive until the returned guard is
+    /// dropped.
+    pub fn root(self, heap: &Heap) -> GcRoot<'_, Array> {
+        GcPtr(self.0.cast_mut().cast::<GcValue<Array>>()).root(heap)
+    }
+}
+
+impl Deref for MolStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for MolStr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl fmt::Debug for MolStr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+
+/// Keeps a GC object alive while the host holds it. It borrows the heap of
+/// the object, so its compiler can't be dropped before it.
+pub struct GcRoot<'h, T> {
+    ptr: GcPtr<T>,
+    heap: &'h Heap,
+}
+
+impl<T> GcRoot<'_, T> {
+    pub const fn ptr(&self) -> GcPtr<T> {
+        self.ptr
+    }
+}
+
+impl<T> Deref for GcRoot<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ptr
+    }
+}
+
+impl<T> Drop for GcRoot<'_, T> {
     fn drop(&mut self) {
-        unsafe { unmark_root(self.0.cast()) };
+        self.heap.unroot(self.ptr.0.cast());
     }
 }
 
@@ -145,7 +299,7 @@ pub trait MollieTypeOf {
         None
     }
 
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef;
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef;
 }
 
 pub trait MollieMultipleTypeOf {
@@ -153,14 +307,14 @@ pub trait MollieMultipleTypeOf {
         None
     }
 
-    fn mollie_type_of(context: &mut TypeContext) -> impl Iterator<Item = TypeRef>;
+    fn mollie_type_of(context: &mut TyCtxt) -> impl Iterator<Item = TypeRef>;
 }
 
 macro_rules! mollie_types {
     ($($typo:ty => $variant:expr),*) => {
         $(
             impl MollieTypeOf for $typo {
-                fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+                fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
                     context.types.get_or_add($variant)
                 }
             }
@@ -171,7 +325,7 @@ macro_rules! mollie_types {
 macro_rules! mollie_arg_types {
     ($($name:ident),*) => {
         impl<$($name: MollieTypeOf),*> MollieMultipleTypeOf for ($($name),*,) {
-            fn mollie_type_of(context: &mut TypeContext) ->impl Iterator<Item = TypeRef> {
+            fn mollie_type_of(context: &mut TyCtxt) ->impl Iterator<Item = TypeRef> {
                 [$($name::mollie_type_of(context)),*].into_iter()
             }
         }
@@ -191,8 +345,7 @@ mollie_types! {
     usize  => Type::Primitive(PrimitiveType::UInt(UIntType::USize)),
     f32    => Type::Primitive(PrimitiveType::F32                ),
     bool   => Type::Primitive(PrimitiveType::Bool              ),
-    &str   => Type::Primitive(PrimitiveType::String               ),
-    String => Type::Primitive(PrimitiveType::String               )
+    MolStr => Type::Primitive(PrimitiveType::String               )
 }
 
 pub struct Generic<const N: usize>;
@@ -202,7 +355,7 @@ impl<const N: usize> MollieTypeOf for Generic<N> {
         Some(N)
     }
 
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
         context.types.get_or_add(Type::Generic(N))
     }
 }
@@ -212,25 +365,25 @@ type AdtBuilderVariant = Vec<(String, TypeRef, Option<ConstantValue>)>;
 pub struct AnyType;
 
 impl MollieTypeOf for () {
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
         context.types.get_or_add(Type::Primitive(PrimitiveType::Void))
     }
 }
 
 impl MollieTypeOf for AnyType {
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
         context.types.get_or_add(Type::Primitive(PrimitiveType::Any))
     }
 }
 
 impl MollieMultipleTypeOf for () {
-    fn mollie_type_of(_: &mut TypeContext) -> impl Iterator<Item = TypeRef> {
+    fn mollie_type_of(_: &mut TyCtxt) -> impl Iterator<Item = TypeRef> {
         empty()
     }
 }
 
 impl<T: MollieTypeOf> MollieTypeOf for &[T] {
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
         let element = T::mollie_type_of(context);
 
         context.types.get_or_add(Type::Array(element, None))
@@ -238,7 +391,7 @@ impl<T: MollieTypeOf> MollieTypeOf for &[T] {
 }
 
 impl<T: MollieTypeOf, const U: usize> MollieTypeOf for [T; U] {
-    fn mollie_type_of(context: &mut TypeContext) -> TypeRef {
+    fn mollie_type_of(context: &mut TyCtxt) -> TypeRef {
         let element = T::mollie_type_of(context);
 
         context.types.get_or_add(Type::Array(element, Some(U)))
@@ -253,7 +406,7 @@ mollie_arg_types![A, B, C, D, E];
 mollie_arg_types![A, B, C, D, E, F];
 mollie_arg_types![A, B, C, D, E, F, G];
 
-pub fn func<Args: MollieMultipleTypeOf, Returns: MollieTypeOf>(context: &mut TypeContext) -> TypeRef {
+pub fn func<Args: MollieMultipleTypeOf, Returns: MollieTypeOf>(context: &mut TyCtxt) -> TypeRef {
     let args = Args::mollie_type_of(context).collect();
     let returns = Returns::mollie_type_of(context);
 
@@ -262,43 +415,58 @@ pub fn func<Args: MollieMultipleTypeOf, Returns: MollieTypeOf>(context: &mut Typ
 
 #[derive(Debug)]
 pub struct AdtBuilder<'a> {
-    context: &'a mut TypeContext,
+    context: &'a mut TyCtxt,
     name: Option<String>,
     collectable: bool,
+    value: bool,
     variants: Vec<(Option<String>, AdtBuilderVariant)>,
     generics: usize,
     kind: AdtKind,
 }
 
 impl<'a> AdtBuilder<'a> {
-    pub fn new_struct<T: Into<String>>(context: &'a mut TypeContext, name: T) -> Self {
+    pub fn new_struct<T: Into<String>>(context: &'a mut TyCtxt, name: T) -> Self {
         Self {
             context,
             name: Some(name.into()),
             collectable: true,
+            value: false,
             variants: vec![(None, vec![])],
             generics: 0,
             kind: AdtKind::Struct,
         }
     }
 
-    pub fn new_enum<T: Into<String>>(context: &'a mut TypeContext, name: T) -> Self {
+    pub fn new_enum<T: Into<String>>(context: &'a mut TyCtxt, name: T) -> Self {
         Self {
             context,
             name: Some(name.into()),
             collectable: true,
+            value: false,
             variants: vec![],
             generics: 0,
             kind: AdtKind::Enum,
         }
     }
 
-    pub fn non_gc_collectable(mut self) -> Self {
+    #[must_use]
+    pub const fn non_gc_collectable(mut self) -> Self {
         self.collectable = false;
 
         self
     }
 
+    /// Makes this a value type (`value struct`, `value enum`): values are
+    /// copied instead of referenced, and are stored with the C layout of
+    /// their fields.
+    #[must_use]
+    pub const fn value_type(mut self) -> Self {
+        self.value = true;
+
+        self
+    }
+
+    #[must_use]
     pub fn variant<T: Into<String>>(mut self, name: T) -> Self {
         self.variants.push((Some(name.into()), vec![(
             String::from("<discriminant>"),
@@ -309,12 +477,14 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    #[must_use]
     pub const fn add_generic(mut self) -> Self {
         self.generics += 1;
 
         self
     }
 
+    #[must_use]
     pub fn field_default<T: MollieTypeOf + Into<ConstantValue>>(mut self, name: impl Into<String>, default: T) -> Self {
         if let Some(index) = T::generic_index() {
             assert!(self.generics > index, "pls add generic param");
@@ -327,6 +497,7 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    #[must_use]
     pub fn field<T: MollieTypeOf>(mut self, name: impl Into<String>) -> Self {
         if let Some(index) = T::generic_index() {
             assert!(self.generics > index, "pls add generic param");
@@ -339,6 +510,7 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    #[must_use]
     pub fn field_ty<T: Into<String>>(mut self, name: T, ty: TypeRef) -> Self {
         if let Some((_, variant)) = self.variants.last_mut() {
             variant.push((name.into(), ty, None));
@@ -365,7 +537,18 @@ impl<'a> AdtBuilder<'a> {
             })),
         };
 
-        self.context.register_adt_in_module(module, adt)
+        let name = adt.name.clone().unwrap_or_default();
+        let adt_ref = self
+            .context
+            .def_registry
+            .register_adt_in_module(module, adt, Span::default())
+            .unwrap_or_else(|error| panic!("can't register `{name}`: {:?}", error.error));
+
+        if self.value {
+            self.context.def_registry.value_types.insert(adt_ref);
+        }
+
+        adt_ref
     }
 
     pub fn finish(self) -> AdtRef {
@@ -375,14 +558,14 @@ impl<'a> AdtBuilder<'a> {
 
 #[derive(Debug)]
 pub struct TraitBuilder<'a> {
-    context: &'a mut TypeContext,
+    context: &'a mut TyCtxt,
     name: String,
     generics: usize,
     functions: IndexVec<TraitFuncRef, (String, Vec<Arg<TypeRef>>, TypeRef)>,
 }
 
 impl<'a> TraitBuilder<'a> {
-    pub fn new<T: Into<String>>(context: &'a mut TypeContext, name: T) -> Self {
+    pub fn new<T: Into<String>>(context: &'a mut TyCtxt, name: T) -> Self {
         Self {
             context,
             name: name.into(),
@@ -391,6 +574,7 @@ impl<'a> TraitBuilder<'a> {
         }
     }
 
+    #[must_use]
     pub fn func<T: Into<String>, I: IntoIterator<Item = (T, TypeRef)>>(mut self, name: T, params: I, returns: TypeRef) -> Self {
         let mut args = vec![Arg {
             name: "self".into(),
@@ -409,6 +593,7 @@ impl<'a> TraitBuilder<'a> {
         self
     }
 
+    #[must_use]
     pub fn static_func<T: Into<String>, I: IntoIterator<Item = (T, TypeRef)>>(mut self, name: T, params: I, returns: TypeRef) -> Self {
         self.functions.push((
             name.into(),
@@ -443,11 +628,17 @@ impl<'a> TraitBuilder<'a> {
                     name,
                     args: args.into_boxed_slice(),
                     returns,
+                    default: None,
                 })
                 .collect(),
         };
 
-        self.context.register_trait_in_module(module, r#trait)
+        let name = r#trait.name.clone();
+
+        self.context
+            .def_registry
+            .register_trait_in_module(module, r#trait, Span::default())
+            .unwrap_or_else(|error| panic!("can't register `{name}`: {:?}", error.error))
     }
 
     pub fn finish(self) -> TraitRef {
@@ -459,8 +650,8 @@ pub struct VTableBuilder<'a> {
     context: &'a mut TypedASTContext,
     target: TypeRef,
     generics: usize,
-    functions: IndexVec<VFuncRef, VTableFunc>,
-    external_functions: IndexVec<VFuncRef, FunctionBody>,
+    origin_trait: Option<(TraitRef, Box<[TypeRef]>)>,
+    functions: Vec<(VTableFunc, FunctionBody)>,
 }
 
 impl<'a> VTableBuilder<'a> {
@@ -469,40 +660,126 @@ impl<'a> VTableBuilder<'a> {
             context,
             target,
             generics: 0,
-            functions: IndexVec::new(),
-            external_functions: IndexVec::new(),
+            origin_trait: None,
+            functions: Vec::new(),
         }
     }
 
-    pub fn add_generic(mut self) -> Self {
+    #[must_use]
+    pub const fn add_generic(mut self) -> Self {
         self.generics += 1;
 
         self
     }
 
-    pub fn func<T: Into<String>, I: IntoIterator<Item = TypeRef>>(mut self, name: T, external_name: &'static str, args: I, returns: TypeRef) -> Self {
-        let ty = self.context.type_context.types.get_or_add(Type::Func(args.into_iter().collect(), returns));
-
-        self.external_functions.push(FunctionBody::Import(external_name));
-        self.functions.push(VTableFunc {
-            trait_func: None,
-            name: name.into(),
-            arg_names: Vec::new(),
-            ty,
-        });
+    /// Makes this an impl of `trait_ref` with type arguments `trait_args`.
+    /// Every function of the trait must be added with [`Self::func`].
+    ///
+    /// Like in trait impls written in Mollie, generic 0 is `Self`, so the
+    /// impl's own generics start from 1.
+    #[must_use]
+    pub fn implements(mut self, trait_ref: TraitRef, trait_args: impl IntoIterator<Item = TypeRef>) -> Self {
+        self.origin_trait = Some((trait_ref, trait_args.into_iter().collect()));
 
         self
     }
 
-    pub fn finish(self) -> VTableRef {
-        self.context.vtables.insert(self.external_functions);
-        self.context.type_context.vtables.insert(VTableGenerator {
+    /// Adds a function with the body `body`, taking arguments called
+    /// `arg_names` (`self` first for methods) of types `args`.
+    #[must_use]
+    pub fn func_body<T: Into<String>, I: IntoIterator<Item = TypeRef>>(
+        mut self,
+        name: T,
+        arg_names: Vec<String>,
+        args: I,
+        returns: TypeRef,
+        body: FunctionBody,
+    ) -> Self {
+        let ty = self.context.tcx.types.get_or_add(Type::Func(args.into_iter().collect(), returns));
+
+        self.functions.push((
+            VTableFunc {
+                trait_func: None,
+                name: name.into(),
+                arg_names,
+                generics: 0,
+                ty,
+            },
+            body,
+        ));
+
+        self
+    }
+
+    /// Adds a function implemented by the host function `external_name`.
+    /// Methods take the receiver as their first argument.
+    #[must_use]
+    pub fn func<T: Into<String>, I: IntoIterator<Item = TypeRef>>(mut self, name: T, external_name: &'static str, args: I, returns: TypeRef) -> Self {
+        let ty = self.context.tcx.types.get_or_add(Type::Func(args.into_iter().collect(), returns));
+
+        self.functions.push((
+            VTableFunc {
+                trait_func: None,
+                name: name.into(),
+                arg_names: Vec::new(),
+                generics: 0,
+                ty,
+            },
+            FunctionBody::Import(external_name),
+        ));
+
+        self
+    }
+
+    /// Registers the impl.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a function of the implemented trait is missing.
+    pub fn finish(mut self) -> ImplRef {
+        let (origin_trait, trait_args) = self.origin_trait.take().map_or_default(|(trait_ref, args)| (Some(trait_ref), args));
+
+        // Trait objects call functions by index, so functions of the trait go
+        // first and in the trait's order.
+        if let Some(trait_ref) = origin_trait {
+            let r#trait = &self.context.tcx.def_registry.traits[trait_ref];
+            let mut ordered = Vec::with_capacity(self.functions.len());
+
+            for (trait_func, func) in r#trait.functions.iter() {
+                let index = self
+                    .functions
+                    .iter()
+                    .position(|(vfunc, _)| vfunc.name == func.name)
+                    .unwrap_or_else(|| panic!("`{}::{}` isn't implemented", r#trait.name, func.name));
+                let (mut vfunc, body) = self.functions.remove(index);
+
+                vfunc.trait_func = Some(trait_func);
+                ordered.push((vfunc, body));
+            }
+
+            ordered.append(&mut self.functions);
+            self.functions = ordered;
+        }
+
+        let generics = (0..self.generics + usize::from(origin_trait.is_some()))
+            .map(|generic| self.context.tcx.types.get_or_add(Type::Generic(generic)))
+            .collect();
+        let (functions, bodies): (Vec<VTableFunc>, Vec<FunctionBody>) = self.functions.into_iter().unzip();
+
+        let impl_ref = self.context.tcx.register_impl(VTableGenerator {
             ty: self.target,
-            origin_trait: None,
-            generics: (0..self.generics)
-                .map(|generic| self.context.type_context.types.get_or_add(Type::Generic(generic)))
-                .collect(),
-            functions: self.functions,
-        })
+            origin_trait,
+            trait_args,
+            generics,
+            bounds: Box::new([]),
+            functions: functions.into_iter().collect(),
+        });
+
+        self.context.vtables.insert(
+            impl_ref,
+            bodies.into_iter().enumerate().map(|(index, body)| (VFuncRef::new(index), body)).collect(),
+        );
+
+        impl_ref
     }
 }

@@ -1,185 +1,135 @@
 mod array;
-mod array_index;
 mod binary;
 mod call;
+mod cast;
 mod closure;
 mod construct;
-mod field_access;
+mod field;
 mod if_else;
-mod is_pattern;
 mod literal;
-mod var;
-mod vtable_access;
+mod pattern;
+mod place;
 mod r#while;
 
-use std::cmp::Ordering;
-
-use cranelift::{codegen::ir, module::Module, prelude::InstBuilder};
-use indexmap::map::Entry;
-use mollie_index::Idx;
-use mollie_ir::{MollieType, VTablePtr};
+use cranelift::{codegen::ir::InstBuilder, module::Module};
+use mollie_shared::UnaryOperator;
 use mollie_typed_ast::{Expr, ExprRef, TypedAST};
-use mollie_typing::{IntType, PrimitiveType, Type, UIntType};
+use mollie_typing::{ModuleSpan, Type};
 
+pub use self::r#while::LoopTarget;
 use crate::{
-    AsIrType, CompileTypedAST, MolValue,
-    error::CompileResult,
-    func::{FuncKey, FunctionCompiler},
+    CompileTypedAST, MolValue,
+    error::{CompileError, CompileResult},
+    func::FunctionCompiler,
 };
-
-const fn get_ir_type(primitive: PrimitiveType, ptr_type: ir::Type) -> ir::Type {
-    match primitive {
-        PrimitiveType::Int(int_type) => match int_type {
-            IntType::ISize => ptr_type,
-            IntType::I64 => ir::types::I64,
-            IntType::I32 => ir::types::I32,
-            IntType::I16 => ir::types::I16,
-            IntType::I8 => ir::types::I8,
-        },
-        PrimitiveType::UInt(uint_type) => match uint_type {
-            UIntType::USize => ptr_type,
-            UIntType::U64 => ir::types::I64,
-            UIntType::U32 => ir::types::I32,
-            UIntType::U16 => ir::types::I16,
-            UIntType::U8 => ir::types::I8,
-        },
-        PrimitiveType::F32 => ir::types::F32,
-        PrimitiveType::Bool => ir::types::I8,
-        PrimitiveType::String => ptr_type,
-        PrimitiveType::Any | PrimitiveType::Void => ir::types::INVALID,
-    }
-}
 
 impl<M: Module> CompileTypedAST<M, MolValue> for ExprRef {
     fn compile(self, ast: &TypedAST, compiler: &mut FunctionCompiler<'_, M>) -> CompileResult<MolValue> {
-        match &ast[self].value {
-            Expr::Lit(literal_expr) => compiler.compile_lit_expr(ast, self, literal_expr),
-            &Expr::IfElse { condition, block, otherwise } => compiler.compile_if_expr(ast, condition, block, otherwise),
-            &Expr::TypeCast(expr, ty) => {
-                let value = expr.compile(ast, compiler)?.expect_value();
-                let ty = compiler.type_context.type_context.core_types.cast_primitive(ty);
+        // Errors get the span of the innermost expression they come from.
+        let value = compile_expr(self, ast, compiler).map_err(|error| error.or_at(ModuleSpan(ast.module, ast[self].span)))?;
 
-                if let (&Type::Primitive(got), &Type::Primitive(cast_to)) = (
-                    &compiler.type_context.type_context.types[ast[expr].ty],
-                    &compiler.type_context.type_context.types[ty],
-                ) && let MollieType::Regular(ir_type) = ty.as_ir_type(&compiler.type_context.type_context.types, compiler.compiler.isa())
-                {
-                    let ptr_type = compiler.compiler.ptr_type();
-                    let a = get_ir_type(got, ptr_type);
-                    let b = get_ir_type(cast_to, ptr_type);
+        // Every GC reference produced by an expression must be found by the
+        // garbage collector while it's live, including temporaries.
+        compiler.track(ast[self].ty, &value);
 
-                    let value = if got.is_num() && cast_to.is_num() {
-                        if got.is_int() && cast_to.is_int() {
-                            match a.bytes().cmp(&b.bytes()) {
-                                Ordering::Less => compiler.fn_builder.ins().sextend(ir_type, value),
-                                Ordering::Equal => value,
-                                Ordering::Greater => compiler.fn_builder.ins().ireduce(ir_type, value),
-                            }
-                        } else if got.is_uint() && cast_to.is_uint() {
-                            match a.bytes().cmp(&b.bytes()) {
-                                Ordering::Less => compiler.fn_builder.ins().uextend(ir_type, value),
-                                Ordering::Equal => value,
-                                Ordering::Greater => compiler.fn_builder.ins().ireduce(ir_type, value),
-                            }
-                        } else {
-                            match a.bytes().cmp(&b.bytes()) {
-                                Ordering::Less => {
-                                    if cast_to.is_int() {
-                                        compiler.fn_builder.ins().sextend(ir_type, value)
-                                    } else {
-                                        compiler.fn_builder.ins().uextend(ir_type, value)
-                                    }
-                                }
-                                Ordering::Equal => value,
-                                Ordering::Greater => compiler.fn_builder.ins().ireduce(ir_type, value),
-                            }
-                        }
-                    } else if got.is_f32() && cast_to.is_num() {
-                        let value = match a.bytes().cmp(&b.bytes()) {
-                            Ordering::Less => {
-                                if cast_to.is_int() {
-                                    compiler.fn_builder.ins().sextend(ir::types::I32, value)
-                                } else {
-                                    compiler.fn_builder.ins().uextend(ir::types::I32, value)
-                                }
-                            }
-                            Ordering::Equal => value,
-                            Ordering::Greater => compiler.fn_builder.ins().ireduce(ir::types::I32, value),
-                        };
-
-                        if cast_to.is_int() {
-                            compiler.fn_builder.ins().fcvt_to_sint(ir_type, value)
-                        } else {
-                            compiler.fn_builder.ins().fcvt_to_uint(ir_type, value)
-                        }
-                    } else if got.is_num() && cast_to.is_f32() {
-                        let value = match a.bytes().cmp(&b.bytes()) {
-                            Ordering::Less => {
-                                if cast_to.is_int() {
-                                    compiler.fn_builder.ins().sextend(ir::types::I32, value)
-                                } else {
-                                    compiler.fn_builder.ins().uextend(ir::types::I32, value)
-                                }
-                            }
-                            Ordering::Equal => value,
-                            Ordering::Greater => compiler.fn_builder.ins().ireduce(ir::types::I32, value),
-                        };
-
-                        if cast_to.is_int() {
-                            compiler.fn_builder.ins().fcvt_from_sint(ir_type, value)
-                        } else {
-                            compiler.fn_builder.ins().fcvt_from_uint(ir_type, value)
-                        }
-                    } else {
-                        value
-                    };
-
-                    Ok(MolValue::Value(value))
-                } else {
-                    Ok(MolValue::Value(value))
-                }
-            }
-            Expr::Block(block_ref) => block_ref.compile(ast, compiler),
-            Expr::Var(name) => compiler.compile_var_expr(ast, self, name.as_str()),
-            &Expr::AdtIndex { target, field } => compiler.compile_field_access_expr(ast, self, target, field),
-            &Expr::VTableIndex {
-                target,
-                target_ty,
-                vtable,
-                func,
-            } => compiler.compile_vtable_index(ast, target, target_ty, vtable, func),
-            &Expr::ArrayIndex { target, element } => compiler.compile_array_index(ast, self, target, element),
-            &Expr::While { condition, block } => compiler.compile_while_expr(ast, condition, block),
-            Expr::Array { elements, .. } => compiler.compile_array_expr(ast, self, elements.as_ref()),
-            &Expr::Binary { operator, lhs, rhs } => compiler.compile_bin_expr(ast, lhs, operator.value, rhs),
-            Expr::Call { func, args } => compiler.compile_call_expr(ast, *func, args.as_ref()),
-            Expr::Closure { args, captures, body } => compiler.compile_closure_expr(ast, self, args.as_ref(), captures.as_ref(), *body),
-            Expr::Construct { variant, fields, .. } => compiler.compile_construct(ast, ast[self].ty, *variant, fields.as_ref()),
-            Expr::IsPattern { target, pattern } => compiler.compile_is_pattern_expr(ast, *target, pattern),
-            &Expr::Func(func) => Ok(MolValue::FuncRef(match compiler.funcs.entry(FuncKey::Ref(func)) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let func = compiler
-                        .compiler
-                        .codegen
-                        .module
-                        .declare_func_in_func(compiler.compiler.func_ref_to_func_id[&func], compiler.fn_builder.func);
-
-                    *entry.insert(func)
-                }
-            })),
-            Expr::TraitFunc { target, func, .. } => {
-                if let MolValue::FatPtr(value, vtable_ptr) = target.compile(ast, compiler)? {
-                    let vtable_func = VTablePtr::get_func_ptr(compiler.compiler.isa(), &mut compiler.fn_builder, vtable_ptr, func.index() as u32);
-
-                    compiler.this.replace(MolValue::Value(value));
-
-                    Ok(MolValue::Value(vtable_func))
-                } else {
-                    unimplemented!("expected fat ptr for accessing dynamic vtable value")
-                }
-            }
-            Expr::Error(_) => unreachable!(),
-        }
+        Ok(value)
     }
+}
+
+fn compile_expr<M: Module>(this: ExprRef, ast: &TypedAST, compiler: &mut FunctionCompiler<'_, M>) -> CompileResult<MolValue> {
+    // Traps in the code of the expression are located at it (or at the inner
+    // expression they come from).
+    let outer = compiler.site.replace(ModuleSpan(ast.module, ast[this].span));
+    let result = compile_expr_at(this, ast, compiler);
+
+    compiler.site = outer;
+
+    result
+}
+
+fn compile_expr_at<M: Module>(this: ExprRef, ast: &TypedAST, compiler: &mut FunctionCompiler<'_, M>) -> CompileResult<MolValue> {
+    // Nested code is handled recursively: the stack grows if needed.
+    mollie_shared::limits::grow_stack(move || {
+        {
+            match &ast[this].value {
+                Expr::Lit(literal) => compiler.compile_literal(ast, this, literal),
+                Expr::Var(name) => {
+                    // Variables of type `void` have no value.
+                    if compiler.ir_type(ast[this].ty)?.is_none() {
+                        Ok(MolValue::Nothing)
+                    } else {
+                        compiler.read_var(name)
+                    }
+                }
+                Expr::Array { elements, .. } => compiler.compile_array(ast, this, elements),
+                &Expr::IfElse { condition, block, otherwise } => compiler.compile_if(ast, this, condition, block, otherwise),
+                &Expr::While { condition, block, id } => compiler.compile_while(ast, id, condition, block),
+                &Expr::Loop { block, id } => compiler.compile_loop(ast, this, id, block),
+                &Expr::Break { id, value } => compiler.compile_break(ast, id, value, ast[this].ty),
+                &Expr::Continue { id } => compiler.compile_continue(id, ast[this].ty),
+                &Expr::Block(block) => block.compile(ast, compiler),
+                &Expr::Unary { operator, expr } => {
+                    let value = expr.compile(ast, compiler)?.value()?;
+                    let expr_ty = ast[expr].ty;
+
+                    Ok(MolValue::Value(match operator.value {
+                        // Booleans are 0 or 1: `bnot` would make `!true` 0xFE,
+                        // which is true too.
+                        UnaryOperator::Not => compiler.fn_builder.ins().bxor_imm_u(value, 1),
+                        UnaryOperator::Neg if matches!(compiler.type_context.tcx.types[expr_ty], Type::Primitive(primitive) if primitive.is_f32()) => {
+                            compiler.fn_builder.ins().fneg(value)
+                        }
+                        UnaryOperator::Neg => compiler.fn_builder.ins().ineg(value),
+                    }))
+                }
+                Expr::Binary { operator, lhs, rhs } => compiler.compile_binary(ast, operator.value, *lhs, *rhs),
+                Expr::Closure { args, captures, body } => compiler.compile_closure(ast, this, args, captures, *body),
+                Expr::Call { func, args } => compiler.compile_call(ast, this, *func, args),
+                Expr::Construct { variant, fields, .. } => compiler.compile_construct(ast, this, *variant, fields),
+                &Expr::AdtIndex { target, field } => compiler.compile_field_access(ast, target, field),
+                Expr::VTableIndex {
+                    target,
+                    target_ty,
+                    vtable,
+                    func,
+                    type_args,
+                } => {
+                    if target.is_some() {
+                        return Err(CompileError::unsupported("method of a value used as a function value"));
+                    }
+
+                    // A function value can't give the changed receiver back.
+                    if compiler.type_context.tcx.impl_registry.mut_self.contains(&(*vtable, *func)) {
+                        return Err(CompileError::unsupported("`mut self` method used as a function value"));
+                    }
+
+                    let func_id = compiler.vfunc_id(*target_ty, *vtable, *func, type_args)?;
+
+                    compiler.func_value(func_id, ast[this].ty)
+                }
+                &Expr::ArrayIndex { target, element } => compiler.compile_array_index(ast, this, target, element),
+                Expr::TraitFunc { .. } | Expr::BoundFunc { .. } => Err(CompileError::unsupported("trait function used as a function value")),
+                Expr::Func { func, type_args } => {
+                    let func_id = compiler.func_id(*func, type_args)?;
+
+                    compiler.func_value(func_id, ast[this].ty)
+                }
+                &Expr::TypeCast(expr, ty) => compiler.compile_cast(ast, expr, ty),
+                &Expr::Format { value, spec } => compiler.compile_format(ast, value, spec),
+                Expr::Unreachable => compiler.unreachable(ast[this].ty),
+                &Expr::Const(constant) => {
+                    let value = compiler.type_context.tcx.def_registry.constants[constant]
+                        .value
+                        .clone()
+                        .ok_or_else(|| CompileError::unsupported("constant without a value"))?;
+
+                    compiler.compile_constant(ast[this].ty, &value)
+                }
+                &Expr::Return(value) => compiler.compile_return(ast, value, ast[this].ty),
+                &Expr::Panic(message) => compiler.compile_panic(ast, message, ast[this].ty),
+                Expr::IsPattern { target, pattern } => compiler.compile_is_pattern(ast, *target, pattern),
+                Expr::Error(_) => Err(CompileError::unsupported("expression with a type error")),
+            }
+        }
+    })
 }

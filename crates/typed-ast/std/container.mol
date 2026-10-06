@@ -1,0 +1,15 @@
+// Types with children of type `C`, like `Drawable[]` (any number of
+// children) or `Drawable` (exactly one child). They can be constructed with
+// children:
+//
+//     Column { spacing: 4, Text { value: "a" } Text { value: "b" } }
+//
+// Views implement it from their `children` property.
+@[lang_item = "Container"]
+trait Container<C> {
+    @[lang_item = "Container::children"]
+    func children(self) -> C;
+
+    @[lang_item = "Container::set_children"]
+    func set_children(self, children: C);
+}

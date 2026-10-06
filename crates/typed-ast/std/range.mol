@@ -1,0 +1,126 @@
+import { Option } from super::option;
+import { Iterable, Iterator } from super::iter;
+
+// Values ranges go through: integers.
+trait Step {
+    // The value right after this one.
+    func successor(self) -> Self;
+
+    // Whether this value comes before `other`.
+    func before(self, other: Self) -> bool;
+}
+
+impl Step for i8 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for i16 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for i32 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for i64 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for isize {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for u8 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for u16 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for u32 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for u64 {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+impl Step for usize {
+    func successor(self) -> Self { self + 1 }
+    func before(self, other: Self) -> bool { self < other }
+}
+
+// Values from `start` to `end`: `start..end` without `end`, or `start..=end`
+// with it.
+@[lang_item = "Range"]
+struct Range<T> {
+    start: T,
+    end: T,
+    inclusive: bool
+}
+
+impl<T: Step> Range<T> {
+    // Whether `value` is in the range.
+    func contains(self, value: T) -> bool {
+        !value.before(self.start) && (value.before(self.end) || self.inclusive && !self.end.before(value))
+    }
+
+    // Whether the range has no values.
+    func is_empty(self) -> bool {
+        !(self.start.before(self.end) || self.inclusive && !self.end.before(self.start))
+    }
+}
+
+struct RangeIter<T> {
+    current: T,
+    end: T,
+    inclusive: bool,
+    done: bool
+}
+
+impl<T: Step> Iterator<T> for RangeIter<T> {
+    func next(self) -> Option<T> {
+        if self.done {
+            return Option::None;
+        }
+
+        let value = self.current;
+
+        // The successor of a value before the end always exists, so ranges
+        // up to the maximum value don't overflow.
+        if value.before(self.end) {
+            self.current = value.successor();
+
+            Option::Some { value }
+        } else {
+            self.done = true;
+
+            if self.inclusive && !self.end.before(value) {
+                Option::Some { value }
+            } else {
+                Option::None
+            }
+        }
+    }
+}
+
+impl<T: Step> Iterable<RangeIter<T>> for Range<T> {
+    func iter(self) -> RangeIter<T> {
+        RangeIter {
+            current: self.start,
+            end: self.end,
+            inclusive: self.inclusive,
+            done: false
+        }
+    }
+}

@@ -19,7 +19,8 @@ impl Parse for IfElseExpr {
 
         let else_block = if parser.try_consume(&Token::Else) {
             if parser.check(&Token::If) {
-                Some(Self::parse(parser)?.map(Expr::IfElse))
+                // `else if` chains nest.
+                Some(parser.nested(Self::parse)?.map(Expr::IfElse))
             } else {
                 Some(BlockExpr::parse(parser)?.map(Expr::Block))
             }

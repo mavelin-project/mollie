@@ -1,0 +1,106 @@
+import { Option } from super::option;
+import { Iterable, Iterator } from super::iter;
+
+// Methods of strings, beyond the built-in ones (`len`, `slice`, `contains`,
+// `starts_with`, `ends_with`, `byte_index_of`, `compare`, `hash`,
+// `char_count`, `trim`, `to_lower`, `to_upper`, `repeat` and `split`).
+trait Text {
+    func is_empty(self) -> bool;
+
+    // Byte offset of the first `part`.
+    func find(self, part: string) -> Option<usize>;
+
+    // The integer written in the string (all of it).
+    func parse_int(self) -> Option<i64>;
+
+    // The number written in the string (all of it).
+    func parse_float(self) -> Option<f32>;
+
+    // The characters, as strings of one character each.
+    func chars(self) -> Chars;
+
+    // The bytes.
+    func bytes(self) -> Bytes;
+}
+
+impl Text for string {
+    func is_empty(self) -> bool {
+        self.len() == 0
+    }
+
+    func find(self, part: string) -> Option<usize> {
+        let index = self.byte_index_of(part);
+
+        if index < 0 { Option::None } else { Option::Some { value: index as usize } }
+    }
+
+    func parse_int(self) -> Option<i64> {
+        if self.is_int() { Option::Some { value: self.to_int() } } else { Option::None }
+    }
+
+    func parse_float(self) -> Option<f32> {
+        if self.is_float() { Option::Some { value: self.to_float() } } else { Option::None }
+    }
+
+    func chars(self) -> Chars {
+        Chars { text: self, index: 0 }
+    }
+
+    func bytes(self) -> Bytes {
+        Bytes { text: self, index: 0 }
+    }
+}
+
+// Characters of a string (see `Text::chars`).
+struct Chars {
+    text: string,
+    index: usize
+}
+
+impl Iterator<string> for Chars {
+    func next(self) -> Option<string> {
+        let width = self.text.char_width_at(self.index);
+
+        if width == 0 {
+            Option::None
+        } else {
+            let value = self.text.slice(self.index, self.index + width);
+
+            self.index += width;
+
+            Option::Some { value }
+        }
+    }
+}
+
+impl Iterable<Chars> for Chars {
+    func iter(self) -> Chars {
+        self
+    }
+}
+
+// Bytes of a string (see `Text::bytes`).
+struct Bytes {
+    text: string,
+    index: usize
+}
+
+impl Iterator<u8> for Bytes {
+    func next(self) -> Option<u8> {
+        if self.index < self.text.len() {
+            let value = self.text.byte_at(self.index);
+
+            self.index += 1;
+
+            Option::Some { value }
+        } else {
+            Option::None
+        }
+    }
+}
+
+impl Iterable<Bytes> for Bytes {
+    func iter(self) -> Bytes {
+        self
+    }
+}

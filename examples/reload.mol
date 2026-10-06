@@ -1,0 +1,17 @@
+// A script reloaded while `cargo run --example reload` runs: edit and save
+// this file, and the next frame runs the new version. `state` is kept by the
+// host between frames and versions, `frame` is the number of the frame.
+//
+// Try changing `by: 1` to `by: 10`, or making a mistake: the previous version
+// keeps running until it's fixed.
+
+struct Step { by: i32 }
+
+func next(state: i32, step: Step) -> i32 {
+    state + step.by
+}
+
+let step = Step { by: 1 };
+
+log("frame ${frame}: ${state} + ${step.by}");
+next(state, step)

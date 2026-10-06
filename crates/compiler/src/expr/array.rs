@@ -1,90 +1,40 @@
-use cranelift::{codegen::ir, module::Module, prelude::InstBuilder};
-use itertools::Itertools;
-use mollie_ir::{Array, MollieType};
+use cranelift::module::Module;
 use mollie_typed_ast::{ExprRef, TypedAST};
-use mollie_typing::{Type, TypeRef};
+use mollie_typing::Type;
 
-use crate::{AsIrType, CompileTypedAST, MolValue, allocator::TypeLayout, error::CompileResult, func::FunctionCompiler};
+use crate::{
+    CompileTypedAST, MolValue,
+    error::{CompileError, CompileResult},
+    func::FunctionCompiler,
+};
 
 impl<M: Module> FunctionCompiler<'_, M> {
-    pub fn type_layout_of(&self, ty: TypeRef) -> &'static TypeLayout {
-        match self.type_context.type_context.types[ty] {
-            Type::Primitive(primitive) => self.compiler.core_types.cast_primitive(primitive),
-            Type::Func(..) | Type::Adt(..) | Type::Array(..) => self.compiler.core_types.usize,
-            Type::Trait(..) => self.compiler.core_types.string,
-            _ => self.compiler.core_types.void,
+    /// Compiles `[a, b, ...]`.
+    pub fn compile_array(&mut self, ast: &TypedAST, expr: ExprRef, elements: &[ExprRef]) -> CompileResult<MolValue> {
+        // The expected type, e.g. an array of trait objects for a field,
+        // decides the representation of elements.
+        let Type::Array(element, _) = self.types()[self.resolve(ast[expr].expected_ty)] else {
+            return Err(CompileError::unsupported(format!("array literal of `{}`", self.display(ast[expr].expected_ty))));
+        };
+
+        let mut values = Vec::with_capacity(elements.len());
+
+        for &element_expr in elements {
+            let value = element_expr.compile(ast, self)?;
+
+            values.push(self.coerce(value, ast[element_expr].ty, element)?);
         }
+
+        Ok(MolValue::Value(self.array_of(element, &values)?))
     }
 
-    /// Compiles `[expr, expr, ...]` expression. Returns [`MolValue::FatPtr`]
-    /// with a pointer to beginning of array and its size.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CompileError`] if there is a compilation error in one of
-    /// elements or an error when creating array.
-    ///
-    /// [`CompileError`]: crate::error::CompileError
-    pub fn compile_array_expr(&mut self, ast: &TypedAST, expr: ExprRef, elements: &[ExprRef]) -> CompileResult<MolValue> {
-        if let Type::Array(element, _) = self.type_context.type_context.types[ast[expr].ty] {
-            let mut values = Vec::with_capacity(elements.len());
+    /// Compiles `target[index]`, trapping if the index is out of bounds.
+    pub fn compile_array_index(&mut self, ast: &TypedAST, expr: ExprRef, target: ExprRef, index: ExprRef) -> CompileResult<MolValue> {
+        let array = target.compile(ast, self)?.value()?;
+        let index = index.compile(ast, self)?.value()?;
+        let element_type = self.value_type(ast[expr].ty)?;
+        let addr = self.element_addr(array, index, element_type.bytes());
 
-            for expr_ref in elements {
-                if let MolValue::Value(value) = expr_ref.compile(ast, self)? {
-                    if let Type::Trait(t, _) = self.type_context.type_context.types[element] {
-                        let hash = self.type_context.type_context.types.hash_of(ast[*expr_ref].ty);
-                        let data_id = self
-                            .compiler
-                            .codegen
-                            .module
-                            .declare_data_in_func(self.compiler.trait_to_vtable[&(hash, Some(t))], self.fn_builder.func);
-
-                        let metadata = self.fn_builder.ins().global_value(self.compiler.ptr_type(), data_id);
-
-                        values.push(value);
-                        values.push(metadata);
-                    } else {
-                        values.push(value);
-                    }
-                }
-            }
-
-            let type_layout_ptr = &raw const *self.type_layout_of(element);
-            let ptr_type = self.compiler.ptr_type();
-            let type_layout_ptr = self.fn_builder.ins().iconst(ptr_type, type_layout_ptr as i64);
-            let size = self.fn_builder.ins().iconst(ptr_type, elements.len().cast_signed() as i64);
-            let ptr = self.fn_builder.ins().call(self.context.alloc_array, &[type_layout_ptr, size]);
-            let ptr = self.fn_builder.inst_results(ptr)[0];
-            let array_ptr = self
-                .fn_builder
-                .ins()
-                .load(ptr_type, ir::MemFlags::trusted(), ptr, size_of::<usize>().cast_signed() as i32 * 2);
-
-            let ir_element = ast[expr].ty.as_ir_type(&self.type_context.type_context.types, self.compiler.isa());
-            let arr = Array { element: ir_element };
-
-            match ir_element {
-                MollieType::Regular(_) => {
-                    for (index, value) in values.into_iter().enumerate() {
-                        self.fn_builder.ins().store(ir::MemFlags::trusted(), value, array_ptr, arr.get_offset_of(index));
-                    }
-                }
-                MollieType::Fat(ty, _) => {
-                    for (index, (value, metadata)) in values.into_iter().tuples::<(ir::Value, ir::Value)>().enumerate() {
-                        self.fn_builder.ins().store(ir::MemFlags::trusted(), value, array_ptr, arr.get_offset_of(index));
-                        self.fn_builder.ins().store(
-                            ir::MemFlags::trusted(),
-                            metadata,
-                            array_ptr,
-                            arr.get_offset_of(index) + ty.bytes().cast_signed(),
-                        );
-                    }
-                }
-            }
-
-            Ok(MolValue::Value(ptr))
-        } else {
-            unimplemented!("expected array")
-        }
+        Ok(self.load_value(element_type, addr, 0))
     }
 }

@@ -2,7 +2,7 @@ use crate::{AdtRef, PrimitiveType, TraitRef};
 
 mollie_index::new_idx_type!(TypeRef);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
     Array(TypeRef, Option<usize>),

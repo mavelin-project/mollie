@@ -1,9 +1,9 @@
 use mollie_const::ConstantValue;
 use mollie_shared::{Positioned, Span};
-use mollie_typing::{PrimitiveType, TypeContext, TypeInfo};
+use mollie_typing::{PrimitiveType, TyCtxt, TypeInfo, TypeInfoRef};
 
 use crate::{
-    ConstantContext, FirstPass, FromParsed, IntoConstVal, ModuleLoader, SolvedPass, TypedAST, TypedASTContextRef,
+    ConstantContext, FirstPass, FromParsed, IntoConstVal, SolvedPass, TypedAST, TypedASTContextRef,
     expr::{Expr, ExprRef},
     stmt::{Stmt, StmtRef},
 };
@@ -17,20 +17,35 @@ pub struct Block {
     pub expr: Option<ExprRef>,
 }
 
-impl FromParsed<mollie_parser::BlockExpr, BlockRef> for Block {
-    fn from_parsed(
-        expr: mollie_parser::BlockExpr,
+impl Block {
+    /// Lowers a block whose value is expected to be of type `expected`.
+    pub fn from_parsed_expecting(
+        block: mollie_parser::BlockExpr,
+        expected: TypeInfoRef,
         ast: &mut TypedAST<FirstPass>,
         context: &mut TypedASTContextRef<'_>,
-        loader: &mut dyn ModuleLoader,
         span: Span,
     ) -> BlockRef {
+        context.expected = Some(expected);
+
+        let block = Self::from_parsed(block, ast, context, span);
+
+        context.expected = None;
+
+        block
+    }
+}
+
+impl FromParsed<mollie_parser::BlockExpr, BlockRef> for Block {
+    fn from_parsed(expr: mollie_parser::BlockExpr, ast: &mut TypedAST<FirstPass>, context: &mut TypedASTContextRef<'_>, span: Span) -> BlockRef {
+        // The type expected of the block is expected of its final expression.
+        let expected = context.expected.take();
         let mut stmts = Vec::new();
 
-        context.solver.push_frame();
+        context.type_solver.push_frame();
 
         for stmt in expr.stmts {
-            if let Some(stmt) = Stmt::from_parsed(stmt.value, ast, context, loader, stmt.span) {
+            if let Some(stmt) = Stmt::from_parsed(stmt.value, ast, context, stmt.span) {
                 stmts.push(stmt);
             }
         }
@@ -42,21 +57,24 @@ impl FromParsed<mollie_parser::BlockExpr, BlockRef> for Block {
                 value: mollie_parser::Stmt::Expression(expr),
                 span,
             }) => {
-                let expr = Expr::from_parsed(expr, ast, context, loader, span);
+                let expr = match expected {
+                    Some(expected) => Expr::from_parsed_expecting(expr, expected, ast, context, span),
+                    None => Expr::from_parsed(expr, ast, context, span),
+                };
 
                 (Some(expr), ast[expr].ty)
             }
-            _ => (None, context.solver.add_info(TypeInfo::Primitive(PrimitiveType::Void), None)),
+            _ => (None, context.type_solver.add_info(TypeInfo::Primitive(PrimitiveType::Void), None)),
         };
 
-        context.solver.pop_frame();
+        context.type_solver.pop_frame();
 
         ast.add_block(Self { stmts, expr }, ty, span)
     }
 }
 
 impl IntoConstVal for BlockRef {
-    fn into_const_val(self, ast: &TypedAST<SolvedPass>, type_context: &TypeContext, const_context: &mut ConstantContext) -> Result<ConstantValue, ()> {
+    fn into_const_val(self, ast: &TypedAST<SolvedPass>, type_context: &TyCtxt, const_context: &mut ConstantContext) -> Result<ConstantValue, ()> {
         for &stmt in &ast[self].value.stmts {
             match &ast[stmt] {
                 Stmt::Expr(expr) => {

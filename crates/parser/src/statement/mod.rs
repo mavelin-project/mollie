@@ -21,7 +21,7 @@ pub use self::{
     module_decl::ModuleDecl,
     struct_decl::{Property, StructDecl},
     trait_decl::{TraitDecl, TraitFuncArgument, TraitFunction},
-    variable_decl::VariableDecl,
+    variable_decl::{ConstDecl, VariableDecl},
     view_decl::{ViewDecl, ViewProperty},
 };
 use super::{ParseResult, Parser};
@@ -57,6 +57,11 @@ impl Parse for Attribute {
                     ("lang_item", "Option") => value.span.wrap(AttributeValue::LangItem(LangItem::Option)),
                     ("lang_item", "Option::Some") => value.span.wrap(AttributeValue::LangItem(LangItem::OptionSome)),
                     ("lang_item", "Option::None") => value.span.wrap(AttributeValue::LangItem(LangItem::OptionNone)),
+                    ("lang_item", "Result") => value.span.wrap(AttributeValue::LangItem(LangItem::Result)),
+                    ("lang_item", "Container") => value.span.wrap(AttributeValue::LangItem(LangItem::Container)),
+                    ("lang_item", "Container::children") => value.span.wrap(AttributeValue::LangItem(LangItem::ContainerChildren)),
+                    ("lang_item", "Container::set_children") => value.span.wrap(AttributeValue::LangItem(LangItem::ContainerSetChildren)),
+                    ("lang_item", "Range") => value.span.wrap(AttributeValue::LangItem(LangItem::Range)),
                     _ => value.span.wrap(AttributeValue::Literal(value.value)),
                 },
                 _ => value.span.wrap(AttributeValue::Literal(value.value)),
@@ -77,6 +82,7 @@ impl Parse for Attribute {
 pub enum Stmt {
     Expression(Expr),
     VariableDecl(VariableDecl),
+    ConstDecl(ConstDecl),
     StructDecl(StructDecl),
     ViewDecl(ViewDecl),
     TraitDecl(TraitDecl),
@@ -99,11 +105,42 @@ impl Parse for Stmt {
             items
         };
 
+        // `extern` declarations of stubs of the host's API: `extern func`
+        // (without a body), `extern struct`, `extern value struct` and
+        // `extern trait`. `extern` is a keyword only there.
+        let external = parser.check_if(|token| token.is_ident_and(|name| name == "extern"))
+            && (parser.check2_one_of(&[Token::Func, Token::Struct, Token::Enum, Token::Trait])
+                || parser.peek_nth(1).is_some_and(|token| token.value.is_ident_and(|name| name == "value")));
+        let extern_start = if external { parser.next().map(|token| token.span) } else { None };
+
+        if external && parser.check(&Token::Func) {
+            let decl = FuncDecl::parse_with(parser, true)?;
+            let span = extern_start.map_or(decl.span, |start| start.between(decl.span));
+
+            return Ok(span.wrap(Self::FuncDecl(decl.value)));
+        }
+
+        // `value struct` and `value enum`: `value` is a keyword only there, it
+        // stays a name everywhere else.
+        let value = parser.check_if(|token| token.is_ident_and(|name| name == "value")) && parser.check2_one_of(&[Token::Struct, Token::Enum]);
+        let start = if value { parser.next().map(|token| token.span) } else { None };
+
         match parser.peek().map(|v| &v.value) {
             Some(Token::View) => Ok(ViewDecl::parse(parser, attributes)?.map(Self::ViewDecl)),
-            Some(Token::Struct) => Ok(StructDecl::parse(parser, attributes)?.map(Self::StructDecl)),
-            Some(Token::Enum) => Ok(EnumDecl::parse(parser, attributes)?.map(Self::EnumDecl)),
-            Some(Token::Let | Token::Const) => Ok(VariableDecl::parse(parser)?.map(Self::VariableDecl)),
+            Some(Token::Struct) => {
+                let decl = StructDecl::parse(parser, attributes)?;
+                let span = start.map_or(decl.span, |start| start.between(decl.span));
+
+                Ok(span.wrap(Self::StructDecl(StructDecl { value, ..decl.value })))
+            }
+            Some(Token::Enum) => {
+                let decl = EnumDecl::parse(parser, attributes)?;
+                let span = start.map_or(decl.span, |start| start.between(decl.span));
+
+                Ok(span.wrap(Self::EnumDecl(EnumDecl { value, ..decl.value })))
+            }
+            Some(Token::Let) => Ok(VariableDecl::parse(parser)?.map(Self::VariableDecl)),
+            Some(Token::Const) => Ok(ConstDecl::parse(parser)?.map(Self::ConstDecl)),
             Some(Token::Impl) => Ok(Impl::parse(parser)?.map(Self::Impl)),
             Some(Token::Func | Token::Postfix | Token::Public) => Ok(FuncDecl::parse(parser)?.map(Self::FuncDecl)),
             Some(Token::Trait) => Ok(TraitDecl::parse(parser, attributes)?.map(Self::TraitDecl)),

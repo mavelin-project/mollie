@@ -13,7 +13,21 @@ pub fn parse_statements_until(parser: &mut Parser, token: &Token) -> ParseResult
     let mut return_statement: Option<Positioned<Stmt>> = None;
 
     while !parser.check(token) {
-        let statement = Stmt::parse(parser)?;
+        // Statements nest through declarations (a function in a block).
+        let statement = parser.nested(Stmt::parse)?;
+
+        // A block, a `match` or a `loop` used as a statement doesn't need a
+        // semicolon; it's the value of the block only at its end (like in
+        // Rust: `{ { 1 } }` is 1).
+        if matches!(statement.value, Stmt::Expression(Expr::Match(_) | Expr::Loop(_) | Expr::Block(_))) && return_statement.is_none() {
+            if parser.try_consume(&Token::Semi) || !parser.check(token) {
+                statements.push(statement);
+            } else {
+                return_statement.replace(statement);
+            }
+
+            continue;
+        }
 
         if matches!(statement.value, Stmt::Expression(_))
             && !matches!(

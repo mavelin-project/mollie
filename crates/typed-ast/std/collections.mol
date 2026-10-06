@@ -1,0 +1,251 @@
+import { Option } from super::option;
+import { Iterable, Iterator } from super::iter;
+import { Eq, Hash } from super::hash;
+
+// An entry of a `Map`.
+struct Entry<K, V> {
+    key: K,
+    value: V,
+    hash: u64,
+    // Removed entries stay until the map grows, as markers for lookups.
+    alive: bool
+}
+
+// A map from keys to values. Entries are iterated in the order they were
+// inserted, the same on every platform. Create one with `Map::new()`.
+struct Map<K, V> {
+    entries: Entry<K, V>[],
+    // Open addressing: indices of entries + 1, or 0 for empty slots.
+    slots: usize[],
+    count: usize
+}
+
+impl<K: Hash + Eq, V> Map<K, V> {
+    func new() -> Map<K, V> {
+        Map { entries: [], slots: [], count: 0 }
+    }
+
+    // Number of entries.
+    func len(self) -> usize {
+        self.count
+    }
+
+    func is_empty(self) -> bool {
+        self.count == 0
+    }
+
+    // The slot of `key`: holding its entry, or the empty slot it would go to.
+    func slot_of(self, key: K, hash: u64) -> usize {
+        let capacity = self.slots.len();
+        let mut slot = (hash % (capacity as u64)) as usize;
+
+        while true {
+            let index = self.slots[slot];
+
+            if index == 0 {
+                return slot;
+            }
+
+            let entry = self.entries[index - 1];
+
+            if entry.alive && entry.hash == hash && entry.key.eq(key) {
+                return slot;
+            }
+
+            slot = (slot + 1) % capacity;
+        }
+
+        0
+    }
+
+    // Rebuilds the slots with room for `capacity` entries, dropping removed
+    // entries.
+    func rebuild(self, capacity: usize) {
+        let live: Entry<K, V>[] = [];
+
+        for entry in self.entries {
+            if entry.alive {
+                live.push(entry);
+            }
+        }
+
+        let slots: usize[] = [];
+        let mut i = 0usize;
+
+        while i < capacity {
+            slots.push(0);
+            i += 1;
+        }
+
+        self.entries = live;
+        self.slots = slots;
+
+        let mut index = 0usize;
+
+        while index < self.entries.len() {
+            let mut slot = (self.entries[index].hash % (capacity as u64)) as usize;
+
+            while self.slots[slot] != 0 {
+                slot = (slot + 1) % capacity;
+            }
+
+            self.slots[slot] = index + 1;
+            index += 1;
+        }
+    }
+
+    // Sets the value of `key`, returning the previous one.
+    func insert(self, key: K, value: V) -> Option<V> {
+        // At most half of the slots are used.
+        if (self.entries.len() + 1) * 2 > self.slots.len() {
+            self.rebuild((self.count + 1) * 4);
+        }
+
+        let hash = key.hash();
+        let slot = self.slot_of(key, hash);
+        let index = self.slots[slot];
+
+        if index != 0 {
+            let entry = self.entries[index - 1];
+            let previous = entry.value;
+
+            entry.value = value;
+
+            return Option::Some { value: previous };
+        }
+
+        self.entries.push(Entry { key, value, hash, alive: true });
+        self.slots[slot] = self.entries.len();
+        self.count += 1;
+
+        Option::None
+    }
+
+    // The value of `key`.
+    func get(self, key: K) -> Option<V> {
+        if self.count == 0 {
+            return Option::None;
+        }
+
+        let index = self.slots[self.slot_of(key, key.hash())];
+
+        if index == 0 { Option::None } else { Option::Some { value: self.entries[index - 1].value } }
+    }
+
+    func contains(self, key: K) -> bool {
+        self.get(key) is Some
+    }
+
+    // Removes `key`, returning its value.
+    func remove(self, key: K) -> Option<V> {
+        if self.count == 0 {
+            return Option::None;
+        }
+
+        let index = self.slots[self.slot_of(key, key.hash())];
+
+        if index == 0 {
+            return Option::None;
+        }
+
+        let entry = self.entries[index - 1];
+
+        entry.alive = false;
+        self.count -= 1;
+
+        Option::Some { value: entry.value }
+    }
+
+    // The keys, in insertion order.
+    func keys(self) -> K[] {
+        let keys: K[] = [];
+
+        for entry in self.entries {
+            if entry.alive {
+                keys.push(entry.key);
+            }
+        }
+
+        keys
+    }
+
+    // The values, in insertion order.
+    func values(self) -> V[] {
+        let values: V[] = [];
+
+        for entry in self.entries {
+            if entry.alive {
+                values.push(entry.value);
+            }
+        }
+
+        values
+    }
+}
+
+// Entries of a map, in insertion order: `for entry in map { entry.key ... }`.
+struct MapIter<K, V> {
+    entries: Entry<K, V>[],
+    index: usize
+}
+
+impl<K, V> Iterator<Entry<K, V>> for MapIter<K, V> {
+    func next(self) -> Option<Entry<K, V>> {
+        while self.index < self.entries.len() {
+            let entry = self.entries[self.index];
+
+            self.index += 1;
+
+            if entry.alive {
+                return Option::Some { value: entry };
+            }
+        }
+
+        Option::None
+    }
+}
+
+impl<K, V> Iterable<MapIter<K, V>> for Map<K, V> {
+    func iter(self) -> MapIter<K, V> {
+        MapIter { entries: self.entries, index: 0 }
+    }
+}
+
+// A set of values, iterated in insertion order. Create one with
+// `Set::new()`.
+struct Set<K> {
+    map: Map<K, bool>
+}
+
+impl<K: Hash + Eq> Set<K> {
+    func new() -> Set<K> {
+        Set { map: Map::new() }
+    }
+
+    func len(self) -> usize {
+        self.map.len()
+    }
+
+    func is_empty(self) -> bool {
+        self.map.is_empty()
+    }
+
+    // Adds `value`, returning whether it wasn't in the set.
+    func insert(self, value: K) -> bool {
+        self.map.insert(value, true) is None
+    }
+
+    func contains(self, value: K) -> bool {
+        self.map.contains(value)
+    }
+
+    // Removes `value`, returning whether it was in the set.
+    func remove(self, value: K) -> bool {
+        self.map.remove(value) is Some
+    }
+
+    // The values, in insertion order.
+    func values(self) -> K[] {
+        self.map.keys()
+    }
+}

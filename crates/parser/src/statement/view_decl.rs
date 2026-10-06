@@ -70,9 +70,9 @@ impl ViewDecl {
             }
         }
 
-        // let view = if (parser.try_consume(&Token::Comma) || properties.is_empty()) &&
-        // parser.check_if(Token::is_ident) {     Some(NodeExpr::parse(parser)?)
-        // } else {
+        // let view = if (parser.try_consume(&Token::Comma) ||
+        // properties.is_empty()) && parser.check_if(Token::is_ident) {
+        // Some(NodeExpr::parse(parser)?) } else {
         //     None
         // };
 

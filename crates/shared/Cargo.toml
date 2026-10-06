@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
+stacker = "0.1"
 
 [lints]
 workspace = true

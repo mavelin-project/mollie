@@ -1,0 +1,164 @@
+import { Option } from super::option;
+import { Eq } from super::hash;
+
+// Methods of arrays, beyond the built-in `push`, `len` and `truncate`.
+impl<T> T[] {
+    func is_empty(self) -> bool {
+        self.len() == 0
+    }
+
+    // Removes the last element and returns it.
+    func pop(self) -> Option<T> {
+        let length = self.len();
+
+        if length == 0 {
+            Option::None
+        } else {
+            let value = self[length - 1];
+
+            self.truncate(length - 1);
+
+            Option::Some { value }
+        }
+    }
+
+    // Inserts `value` at `index`, moving the following elements.
+    func insert(self, index: usize, value: T) {
+        if index > self.len() {
+            panic("insertion index is out of bounds");
+        }
+
+        self.push(value);
+
+        let mut i = self.len() - 1;
+
+        while i > index {
+            self[i] = self[i - 1];
+            i -= 1;
+        }
+
+        self[index] = value;
+    }
+
+    // Removes the element at `index` and returns it, moving the following
+    // elements.
+    func remove(self, index: usize) -> T {
+        let value = self[index];
+        let mut i = index;
+
+        while i + 1 < self.len() {
+            self[i] = self[i + 1];
+            i += 1;
+        }
+
+        self.truncate(self.len() - 1);
+
+        value
+    }
+
+    // Removes every element.
+    func clear(self) {
+        self.truncate(0);
+    }
+
+    // Reverses the order of the elements.
+    func reverse(self) {
+        let mut i = 0usize;
+        let mut j = self.len();
+
+        while i + 1 < j {
+            j -= 1;
+
+            let value = self[i];
+
+            self[i] = self[j];
+            self[j] = value;
+            i += 1;
+        }
+    }
+
+    // A new array with the same elements.
+    func copy(self) -> T[] {
+        let result: T[] = [];
+
+        for value in self {
+            result.push(value);
+        }
+
+        result
+    }
+
+    // Sorts the elements by `compare`, which returns a negative number if its
+    // first argument goes first, 0 if they're equal and a positive number
+    // otherwise. Equal elements keep their order.
+    func sort_by(self, compare: func(T, T) -> i32) {
+        let length = self.len();
+
+        if length < 2 {
+            return;
+        }
+
+        // Bottom-up merge sort: runs of `width` elements are merged into
+        // `buffer`, then copied back.
+        let buffer = self.copy();
+        let mut width = 1usize;
+
+        while width < length {
+            let mut start = 0usize;
+
+            while start < length {
+                let middle = if start + width < length { start + width } else { length };
+                let end = if start + 2 * width < length { start + 2 * width } else { length };
+                let mut i = start;
+                let mut j = middle;
+                let mut k = start;
+
+                while k < end {
+                    if i < middle && (j >= end || compare(self[i], self[j]) <= 0) {
+                        buffer[k] = self[i];
+                        i += 1;
+                    } else {
+                        buffer[k] = self[j];
+                        j += 1;
+                    }
+
+                    k += 1;
+                }
+
+                start = end;
+            }
+
+            let mut k = 0usize;
+
+            while k < length {
+                self[k] = buffer[k];
+                k += 1;
+            }
+
+            width *= 2;
+        }
+    }
+}
+
+// Searches in arrays of values that can be compared.
+impl<T: Eq> T[] {
+    // Whether an element is equal to `value`.
+    func contains(self, value: T) -> bool {
+        self.index_of(value) is Some
+    }
+
+    // Index of the first element equal to `value`.
+    func index_of(self, value: T) -> Option<usize> {
+        let mut i = 0usize;
+
+        while i < self.len() {
+            if self[i].eq(value) {
+                return Option::Some { value: i };
+            }
+
+            i += 1;
+        }
+
+        Option::None
+    }
+}

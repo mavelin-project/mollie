@@ -1,0 +1,112 @@
+// Equality and hashing, used by `Map`, `Set` and searches in arrays.
+
+// Values that can be compared for equality.
+trait Eq {
+    func eq(self, other: Self) -> bool;
+}
+
+// Values with a hash: equal values have equal hashes. Hashes are the same on
+// every platform.
+trait Hash {
+    func hash(self) -> u64;
+}
+
+impl Eq for i8 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for i16 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for i32 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for i64 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for isize {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for u8 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for u16 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for u32 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for u64 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for usize {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for bool {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for f32 {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Eq for string {
+    func eq(self, other: Self) -> bool { self == other }
+}
+
+impl Hash for i8 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for i16 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for i32 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for i64 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for isize {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for u8 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for u16 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for u32 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for u64 {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for usize {
+    func hash(self) -> u64 { (self as u64 + 1) * 6364136223846793005 }
+}
+
+impl Hash for bool {
+    func hash(self) -> u64 { if self { 1 } else { 2 } }
+}
+
+impl Hash for string {
+    func hash(self) -> u64 { self.hash() }
+}

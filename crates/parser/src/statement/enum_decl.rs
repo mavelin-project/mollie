@@ -39,6 +39,8 @@ impl Parse for EnumVariant {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct EnumDecl {
     pub attributes: Vec<Positioned<Attribute>>,
+    /// `value enum`: values are copied instead of referenced.
+    pub value: bool,
     pub name: Positioned<NameWithGenerics>,
     pub variants: Positioned<Vec<Positioned<EnumVariant>>>,
 }
@@ -50,6 +52,11 @@ impl EnumDecl {
         let name = NameWithGenerics::parse(parser)?;
         let variants = parser.consume_separated_in(&Token::Comma, &Token::BraceOpen, &Token::BraceClose)?;
 
-        Ok(name.span.between(variants.span).wrap(Self { attributes, name, variants }))
+        Ok(name.span.between(variants.span).wrap(Self {
+            attributes,
+            value: false,
+            name,
+            variants,
+        }))
     }
 }

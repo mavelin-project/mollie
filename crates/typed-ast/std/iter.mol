@@ -1,0 +1,42 @@
+import { Option } from super::option;
+
+// Values that can be iterated with `for`.
+@[lang_item = "IntoIterator"]
+trait Iterable<T> {
+    @[lang_item = "IntoIterator::into_iter"]
+    func iter(self) -> T;
+}
+
+@[lang_item = "Iterator"]
+trait Iterator<T> {
+    @[lang_item = "Iterator::next"]
+    func next(self) -> Option<T>;
+}
+
+struct ArrayIter<T> {
+    index: usize,
+    value: T[]
+}
+
+impl<T> Iterator<T> for ArrayIter<T> {
+    func next(self) -> Option<T> {
+        if self.index == self.value.len() {
+            Option::None
+        } else {
+            let value = self.value[self.index];
+
+            self.index += 1;
+
+            Option::Some { value }
+        }
+    }
+}
+
+impl<T> Iterable<ArrayIter<T>> for T[] {
+    func iter(self) -> ArrayIter<T> {
+        ArrayIter {
+            value: self,
+            index: 0
+        }
+    }
+}

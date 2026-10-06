@@ -47,6 +47,39 @@ impl Parse for PrimitiveType {
     }
 }
 
+/// A generic parameter of a function or an impl block, with its bounds:
+/// `T`, `T: Shape` or `T: Shape + Named`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+pub struct GenericParam {
+    pub name: Positioned<Ident>,
+    pub bounds: Vec<Positioned<TypePathExpr>>,
+}
+
+impl Parse for GenericParam {
+    fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
+        let name = Ident::parse(parser)?;
+        let mut bounds = Vec::new();
+
+        if parser.try_consume(&Token::Colon) {
+            loop {
+                bounds.push(TypePathExpr::parse(
+                    TypePathSegment::parse_from(Ident::parse(parser)?, parser, false)?,
+                    parser,
+                    false,
+                )?);
+
+                if !parser.try_consume(&Token::Plus) {
+                    break;
+                }
+            }
+        }
+
+        let span = bounds.last().map_or(name.span, |bound| name.between(bound));
+
+        Ok(span.wrap(Self { name, bounds }))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct NameWithGenerics {
     pub name: Positioned<Ident>,
@@ -117,6 +150,13 @@ impl Type {
 
 impl Parse for Type {
     fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
+        // Types nest in type arguments and function types.
+        parser.nested(Self::parse_nested)
+    }
+}
+
+impl Type {
+    fn parse_nested(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
         let value = if parser.try_consume(&Token::ParenOpen) {
             let value = Self::parse_simple(parser)?;
 

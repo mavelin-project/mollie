@@ -87,10 +87,9 @@ impl NodeExpr {
                     let name = Ident::parse(parser)
                         .or_else(|_| parser.consume_map(|token| if matches!(token, Token::Super) { Some(Ident::new("super")) } else { None }))?;
 
-                    children.push(Self::parse(
-                        TypePathExpr::parse(TypePathSegment::parse_from(name, parser, false)?, parser, false)?,
-                        parser,
-                    )?);
+                    let path = TypePathExpr::parse(TypePathSegment::parse_from(name, parser, false)?, parser, false)?;
+
+                    children.push(parser.nested(|parser| Self::parse(path, parser))?);
                 }
             } else {
                 break;

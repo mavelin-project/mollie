@@ -1,22 +1,25 @@
 use cranelift::{
-    codegen::ir,
     module::Module,
     prelude::{FunctionBuilderContext, InstBuilder},
 };
 use mollie_index::Idx;
-use mollie_ir::{MollieType, Struct};
+use mollie_ir::Struct;
 use mollie_typed_ast::{BlockRef, ExprRef, TypedAST};
 use mollie_typing::{AdtKind, AdtVariantRef, Arg, Type, TypeRef};
 
 use crate::{
-    AsIrType, CompileTypedAST, MolValue, Var,
-    allocator::{TypeLayout, TypeLayoutField},
-    error::CompileResult,
-    func::{FunctionCompiler, Variable},
+    CompileTypedAST, MolValue,
+    allocator::TypeLayout,
+    error::{CompileError, CompileResult},
+    func::FunctionCompiler,
+    types,
 };
 
 impl<M: Module> FunctionCompiler<'_, M> {
-    pub fn compile_closure_expr(
+    /// Compiles a closure into a function value: a pointer to its code and a
+    /// pointer to its environment (copies of the captured variables), or null
+    /// if it captures nothing.
+    pub fn compile_closure(
         &mut self,
         ast: &TypedAST,
         expr: ExprRef,
@@ -24,184 +27,93 @@ impl<M: Module> FunctionCompiler<'_, M> {
         captures: &[(String, TypeRef)],
         body: BlockRef,
     ) -> CompileResult<MolValue> {
-        let captures_tuple = Struct::new(
-            captures
-                .iter()
-                .map(|(_, ty)| (ty.as_ir_type(&self.type_context.type_context.types, self.compiler.isa()), None)),
-        );
+        let func_ty = ast[expr].ty;
+        let Type::Func(_, returns) = self.types()[self.resolve(func_ty)] else {
+            return Err(CompileError::unsupported(format!("closure of `{}`", self.display(func_ty))));
+        };
 
-        let mut signature = self.compiler.codegen.module.make_signature();
-
-        if let Type::Func(args, returns) = &self.type_context.type_context.types[ast[expr].ty] {
-            for arg in args {
-                if arg != &self.type_context.type_context.core_types.void {
-                    arg.as_ir_type(&self.type_context.type_context.types, self.compiler.isa())
-                        .add_to_params(&mut signature.params);
-                }
-            }
-
-            if !captures.is_empty() {
-                signature.params.push(ir::AbiParam::new(self.compiler.ptr_type()));
-            }
-
-            if returns != &self.type_context.type_context.core_types.void {
-                returns
-                    .as_ir_type(&self.type_context.type_context.types, self.compiler.isa())
-                    .add_to_params(&mut signature.returns);
-            }
-        }
-
+        let capture_types = captures
+            .iter()
+            .map(|(_, ty)| Ok((self.value_type(*ty)?, None)))
+            .collect::<CompileResult<Vec<_>>>()?;
+        let environment = Struct::new(capture_types);
+        let signature = self.signature(func_ty, true)?;
+        let id = self.compiler.codegen.module.declare_anonymous_function(&signature)?;
         let mut ctx = self.compiler.codegen.module.make_context();
         let mut fn_builder_ctx = FunctionBuilderContext::new();
 
-        let mut compiler = FunctionCompiler::new_anonymous(signature, self.compiler, self.type_context, &mut ctx, &mut fn_builder_ctx)?;
+        {
+            let mut closure = FunctionCompiler::new(
+                id,
+                "closure",
+                signature,
+                &mut *self.compiler,
+                self.type_context,
+                &mut ctx,
+                &mut fn_builder_ctx,
+                self.generics.clone(),
+            );
 
-        let mut index = 0;
+            closure.return_ty = Some(returns);
 
-        if let Type::Func(arg_types, _) = &compiler.type_context.type_context.types[ast[expr].ty] {
-            for (arg, (is_fat, arg_type)) in args.iter().zip(arg_types.iter().map(|&arg_type| {
-                (
-                    arg_type.as_ir_type(&compiler.type_context.type_context.types, compiler.compiler.isa()).is_fat(),
-                    arg_type,
-                )
-            })) {
-                let value = compiler.fn_builder.block_params(compiler.entry_block)[index];
-                let ty = compiler.fn_builder.func.signature.params[index].value_type;
+            let env_param = closure.bind_params(0, args.iter().map(|arg| (arg.name.as_str(), arg.ty)))?;
+            let env = closure.fn_builder.block_params(closure.entry_block)[env_param];
 
-                let var = compiler.fn_builder.declare_var(ty);
+            // The environment keeps captured values alive while the closure is
+            // alive.
+            for ((name, ty), field) in captures.iter().zip(&environment.fields) {
+                let value = closure.load_value(field.ty, env, field.offset);
 
-                compiler.fn_builder.def_var(var, value);
-
-                if is_fat {
-                    let value = compiler.fn_builder.block_params(compiler.entry_block)[index + 1];
-                    let ty = compiler.fn_builder.func.signature.params[index + 1].value_type;
-
-                    let metadata_var = compiler.fn_builder.declare_var(ty);
-
-                    compiler.fn_builder.def_var(metadata_var, value);
-                    compiler
-                        .frames
-                        .current_mut()
-                        .insert(arg.name.clone(), Variable::new(Var::Fat(var, metadata_var), arg_type));
-
-                    index += 2;
-                } else {
-                    compiler
-                        .frames
-                        .current_mut()
-                        .insert(arg.name.clone(), Variable::new(Var::Regular(var), arg_type));
-
-                    index += 1;
-                }
+                closure.declare_binding(name.clone(), *ty, value)?;
             }
+
+            closure.consume_fuel();
+
+            let returned = body.compile(ast, &mut closure)?;
+            let returned = closure.coerce(returned, ast[body].ty, returns)?;
+
+            closure.pop_all_frames();
+            closure.return_(&returned);
+            closure.finalize();
         }
 
-        if !captures.is_empty() {
-            let ptr = compiler.fn_builder.block_params(compiler.entry_block)[index];
+        self.compiler.define_function(id, &mut ctx)?;
 
-            for ((name, arg_type), field) in captures.iter().zip(&captures_tuple.fields) {
-                let var = match field.ty {
-                    MollieType::Regular(ty) => {
-                        let value_var = compiler.fn_builder.declare_var(ty);
-                        let value = compiler.fn_builder.ins().load(ty, ir::MemFlags::trusted(), ptr, field.offset);
-
-                        compiler.fn_builder.def_var(value_var, value);
-
-                        Var::Regular(value_var)
-                    }
-                    MollieType::Fat(ty, metadata_ty) => {
-                        let value_var = compiler.fn_builder.declare_var(ty);
-                        let metadata_var = compiler.fn_builder.declare_var(metadata_ty);
-                        let value = compiler.fn_builder.ins().load(ty, ir::MemFlags::trusted(), ptr, field.offset);
-                        let metadata = compiler
-                            .fn_builder
-                            .ins()
-                            .load(ty, ir::MemFlags::trusted(), ptr, field.offset + ty.bytes().cast_signed());
-
-                        compiler.fn_builder.def_var(value_var, value);
-                        compiler.fn_builder.def_var(metadata_var, metadata);
-
-                        Var::Fat(value_var, metadata_var)
-                    }
-                };
-
-                compiler.frames.current_mut().insert(name.clone(), Variable::new(var, *arg_type));
-            }
-        }
-
-        let returned = body.compile(ast, &mut compiler)?;
-
-        compiler.return_(returned);
-
-        let func_id = compiler.id;
-
-        self.compiler.codegen.module.define_function(func_id, &mut ctx)?;
-        self.compiler.codegen.module.clear_context(&mut ctx);
-
-        let func = self.compiler.codegen.module.declare_func_in_func(func_id, self.fn_builder.func);
-
-        if captures.is_empty() {
-            Ok(MolValue::FuncRef(func))
+        let env = if captures.is_empty() {
+            self.ptr_const(0)
         } else {
-            let fields = captures
-                .iter()
-                .zip(&captures_tuple.fields)
-                .map(|(&(_, field_ty), field)| {
-                    let info = &self.type_context.type_context.types[field_ty];
-                    let offset = field.offset.cast_unsigned();
-                    let ir_type = field_ty.as_ir_type(&self.type_context.type_context.types, self.compiler.isa());
+            let mut fields = Vec::new();
 
-                    if matches!(info, Type::Adt(..)) {
-                        (AdtVariantRef::ZERO, offset, ir_type, TypeLayoutField::Collectable)
-                    } else if let &Type::Array(element, _) = info {
-                        let info = &self.type_context.type_context.types[element];
-
-                        if matches!(info, Type::Adt(..)) {
-                            (AdtVariantRef::ZERO, offset, ir_type, TypeLayoutField::ArrayOfRegular)
-                        } else if matches!(info, Type::Trait(..)) {
-                            (AdtVariantRef::ZERO, offset, ir_type, TypeLayoutField::ArrayOfFat)
-                        } else {
-                            (AdtVariantRef::ZERO, offset, ir_type, TypeLayoutField::Regular)
-                        }
-                    } else {
-                        (AdtVariantRef::ZERO, offset, ir_type, TypeLayoutField::Regular)
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let gc_managed_fields = Vec::leak::<'static>(fields) as &[_];
-
-            let ptr = self.alloc(Box::leak(Box::new(TypeLayout {
-                size: captures_tuple.size as usize,
-                align: captures_tuple.align as usize,
-                kind: Some(AdtKind::Struct),
-                adt_ty: None,
-                fields: gc_managed_fields,
-            })));
-
-            for ((capture, _), field) in captures.iter().zip(&captures_tuple.fields) {
-                if let Some(capture) = self.get_var(capture) {
-                    match (field.ty, capture) {
-                        (MollieType::Regular(_), Var::Regular(value)) => {
-                            let value = self.fn_builder.use_var(value);
-
-                            self.fn_builder.ins().store(ir::MemFlags::trusted(), value, ptr, field.offset);
-                        }
-                        (MollieType::Fat(ty, _), Var::Fat(value, metadata)) => {
-                            let value = self.fn_builder.use_var(value);
-                            let metadata = self.fn_builder.use_var(metadata);
-
-                            self.fn_builder.ins().store(ir::MemFlags::trusted(), value, ptr, field.offset);
-                            self.fn_builder
-                                .ins()
-                                .store(ir::MemFlags::trusted(), metadata, ptr, field.offset + ty.bytes().cast_signed());
-                        }
-                        _ => (),
-                    }
+            for ((_, ty), field) in captures.iter().zip(&environment.fields) {
+                for (offset, ty, kind) in types::layout_fields(&self.type_context.tcx, &self.compiler.adt_types, *ty, &self.generics)? {
+                    fields.push((AdtVariantRef::ZERO, field.offset.cast_unsigned() + offset, ty, kind));
                 }
             }
 
-            Ok(MolValue::CaptureFuncRef(func, ptr))
-        }
+            let fields = self.compiler.heap.intern_fields(fields);
+            let layout = self.compiler.heap.intern_layout(TypeLayout {
+                fields,
+                adt_ty: None,
+                size: environment.size as usize,
+                align: environment.align as usize,
+                kind: Some(AdtKind::Struct),
+            });
+
+            let env = self.alloc(layout);
+
+            for ((name, _), field) in captures.iter().zip(&environment.fields) {
+                let value = self.read_var(name)?;
+
+                self.store_value(field.ty, &value, env, field.offset)?;
+            }
+
+            env
+        };
+
+        let func_ref = self.func_ref(id);
+        let ptr_type = self.ptr_type();
+        let code = self.fn_builder.ins().func_addr(ptr_type, func_ref);
+
+        Ok(MolValue::FatPtr(code, env))
     }
 }

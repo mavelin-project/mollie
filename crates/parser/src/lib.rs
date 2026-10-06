@@ -5,7 +5,10 @@ mod ty;
 use std::{fmt, vec::IntoIter};
 
 use mollie_lexer::{Lexer, Token};
-use mollie_shared::Positioned;
+use mollie_shared::{
+    Positioned,
+    limits::{MAX_NESTING, grow_stack},
+};
 use peekmore::{PeekMore, PeekMoreIterator};
 
 pub use self::{
@@ -17,6 +20,8 @@ pub use self::{
 #[derive(Debug)]
 pub struct Parser {
     tokens: PeekMoreIterator<IntoIter<Positioned<Token>>>,
+    /// How deeply the code being parsed is nested (see [`Parser::nested`]).
+    depth: usize,
 }
 
 impl Parser {
@@ -24,7 +29,53 @@ impl Parser {
     pub fn new(tokens: Vec<Positioned<Token>>) -> Self {
         Self {
             tokens: tokens.into_iter().peekmore(),
+            depth: 0,
         }
+    }
+
+    /// A parser of `tokens` nested in the code of this one (e.g. inside
+    /// parentheses or an interpolation), which counts as nested as deeply.
+    #[must_use]
+    pub fn sub(&self, tokens: Vec<Positioned<Token>>) -> Self {
+        Self {
+            tokens: tokens.into_iter().peekmore(),
+            depth: self.depth,
+        }
+    }
+
+    /// Fails if code nested `extra` levels deeper than the current code would
+    /// be nested too deeply (see [`MAX_NESTING`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code is nested too deeply.
+    pub fn check_depth(&mut self, extra: usize) -> ParseResult<()> {
+        if self.depth + extra > MAX_NESTING {
+            Err(ParseError::new(
+                format!("the code is nested too deeply (more than {MAX_NESTING} levels)"),
+                self.tokens.peek().map(|token| token.span),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Parses code nested one level deeper with `parse`, failing if it's
+    /// nested too deeply (see [`MAX_NESTING`]). The stack grows if needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code is nested too deeply, or the error of
+    /// `parse`.
+    pub fn nested<T>(&mut self, parse: impl FnOnce(&mut Self) -> ParseResult<T>) -> ParseResult<T> {
+        self.check_depth(1)?;
+        self.depth += 1;
+
+        let result = grow_stack(|| parse(self));
+
+        self.depth -= 1;
+
+        result
     }
 
     /// # Errors
@@ -54,7 +105,7 @@ impl Parser {
         }
 
         if let Some(end_position) = end_position {
-            Ok(([start_position, end_position], Self::new(tokens)))
+            Ok(([start_position, end_position], self.sub(tokens)))
         } else {
             Err(ParseError::expected_token(end, tokens.last()))
         }
@@ -347,6 +398,11 @@ impl Parser {
         self.tokens.peek()
     }
 
+    /// Peeks the `n`-th token from the current one (`0` is the current one).
+    pub fn peek_nth(&mut self, n: usize) -> Option<&Positioned<Token>> {
+        self.tokens.peek_nth(n)
+    }
+
     /// Consumes the current token and returns it wrapped in `Some` if the
     /// result of the `func` function is `true`, otherwise returning `None`.
     pub fn next_if<F: Fn(&Token) -> bool>(&mut self, func: F) -> Option<Positioned<Token>> {
@@ -399,5 +455,39 @@ mod tests {
         let expr = Expr::parse(&mut parser);
 
         println!("{expr:#?}");
+    }
+
+    fn parse_expr(source: &str) -> Expr {
+        let mut parser = Parser::new(Lexer::lex(source));
+
+        Expr::parse(&mut parser).expect("the expression must parse").value
+    }
+
+    #[test]
+    fn ranges_bind_looser_than_arithmetic() {
+        let Expr::Range(range) = parse_expr("a + 1..b * 2") else {
+            panic!("expected a range");
+        };
+
+        assert!(!range.inclusive);
+        assert!(matches!(range.start.value, Expr::Binary(_)));
+        assert!(matches!(range.end.value, Expr::Binary(_)));
+
+        let Expr::Range(range) = parse_expr("0..=n") else {
+            panic!("expected a range");
+        };
+
+        assert!(range.inclusive);
+    }
+
+    #[test]
+    fn labeled_loops() {
+        let Expr::Loop(loop_expr) = parse_expr("'outer: loop { break 'outer 1; }") else {
+            panic!("expected a loop");
+        };
+
+        assert_eq!(loop_expr.label.map(|label| label.value.0), Some(String::from("outer")));
+        assert!(matches!(parse_expr("'rows: for row in rows { continue 'rows; }"), Expr::ForIn(for_in) if for_in.label.is_some()));
+        assert!(matches!(parse_expr("'wait: while ready { break; }"), Expr::While(while_expr) if while_expr.label.is_some()));
     }
 }

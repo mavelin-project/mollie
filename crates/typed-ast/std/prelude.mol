@@ -1,0 +1,12 @@
+// Items visible in every module, unless a module declares or imports an
+// item with the same name.
+
+import { Option } from super::option;
+import { Result } from super::result;
+import { Iterable, Iterator } from super::iter;
+import { Container } from super::container;
+import { Range } from super::range;
+import { PI, TAU, E } from super::math;
+import { Eq, Hash } from super::hash;
+import { Text } from super::string;
+import { Map, Set, Entry } from super::collections;

@@ -13,6 +13,15 @@ pub enum NumberToken {
     I64(i64),
 }
 
+/// A part of a string template.
+#[derive(Debug, PartialEq, Clone, PartialOrd)]
+pub enum TemplatePart {
+    Text(String),
+    /// Tokens of an interpolated expression, ending with [`Token::EOF`],
+    /// and its format specifier (after `:`), if any.
+    Expr(Vec<Positioned<Token>>, Option<String>),
+}
+
 #[derive(Debug, Display, IsVariant, Unwrap, PartialEq, Clone, PartialOrd)]
 pub enum Token {
     #[is_variant]
@@ -26,6 +35,11 @@ pub enum Token {
     #[is_variant]
     #[unwrap]
     String(String),
+    /// A string with interpolated expressions: `"Hi, ${name}!"`.
+    #[display("<template>")]
+    #[is_variant]
+    #[unwrap]
+    Template(Vec<TemplatePart>),
     #[display("{_0}")]
     #[is_variant]
     #[unwrap]
@@ -40,7 +54,7 @@ pub enum Token {
     Module,
     #[display("public")]
     Public,
-    #[display("super")]
+    #[display("<super>")]
     Super,
     #[display("self")]
     This,
@@ -56,6 +70,8 @@ pub enum Token {
     From,
     #[display("..")]
     DotDot,
+    #[display("..=")]
+    DotDotEq,
     #[display("enum")]
     Enum,
     #[display("struct")]
@@ -64,6 +80,8 @@ pub enum Token {
     Const,
     #[display("let")]
     Let,
+    #[display("mut")]
+    Mut,
     #[display("while")]
     While,
     #[display("for")]
@@ -84,6 +102,17 @@ pub enum Token {
     Attr,
     #[display("switch")]
     Switch,
+    #[display("match")]
+    Match,
+    #[display("return")]
+    Return,
+    #[display("break")]
+    Break,
+    #[display("continue")]
+    Continue,
+    /// A label of a loop: `'outer`.
+    #[display("'{_0}")]
+    Label(String),
     #[display("[")]
     BracketOpen,
     #[display("]")]
@@ -146,6 +175,8 @@ pub enum Token {
     Question,
     #[display("%")]
     Percent,
+    #[display("%=")]
+    PercentEq,
     #[display(",")]
     Comma,
     #[display("<")]
@@ -164,6 +195,13 @@ pub enum Token {
     Trait,
     #[display("{_0}")]
     Unknown(char),
+    /// A number that can't be represented, like `1.2.3` or a hex number out
+    /// of the range of `i64`.
+    #[display("invalid number `{_0}`")]
+    InvalidNumber(String),
+    /// Code the lexer can't accept, with the reason.
+    #[display("{_0}")]
+    Invalid(String),
     #[display("<EOF>")]
     #[is_variant]
     EOF,

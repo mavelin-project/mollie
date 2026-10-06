@@ -1,99 +1,69 @@
 use cranelift::{codegen::ir, module::Module, prelude::InstBuilder};
-use mollie_ir::MollieType;
 use mollie_typed_ast::{BlockRef, ExprRef, TypedAST};
+use mollie_typing::TypeRef;
 
-use crate::{AsIrType, CompileTypedAST, MolValue, error::CompileResult, func::FunctionCompiler};
+use crate::{CompileTypedAST, MolValue, error::CompileResult, func::FunctionCompiler};
 
 impl<M: Module> FunctionCompiler<'_, M> {
-    pub fn compile_if_expr(&mut self, ast: &TypedAST, condition: ExprRef, block: BlockRef, else_block: Option<ExprRef>) -> CompileResult<MolValue> {
-        self.push_frame();
+    /// Compiles `if condition { block } else otherwise`. Only `if`s with an
+    /// `else` produce a value.
+    pub fn compile_if(&mut self, ast: &TypedAST, expr: ExprRef, condition: ExprRef, block: BlockRef, otherwise: Option<ExprRef>) -> CompileResult<MolValue> {
+        let result_type = if otherwise.is_some() { self.ir_type(ast[expr].ty)? } else { None };
 
         let then_block = self.fn_builder.create_block();
+        let else_block = otherwise.map(|_| self.fn_builder.create_block());
         let after_block = self.fn_builder.create_block();
-        let else_block = else_block.map(|block| (block, self.fn_builder.create_block()));
 
-        self.branches = Some((then_block, else_block.map_or(after_block, |b| b.1)));
+        let results = result_type.map_or_else(Vec::new, |ty| {
+            ty.components()
+                .into_iter()
+                .map(|component| self.fn_builder.append_block_param(after_block, component))
+                .collect()
+        });
 
-        let cond_result = condition.compile(ast, self)?;
+        // Variables bound by patterns in the condition are visible in the
+        // `then` block.
+        self.push_frame();
 
-        self.branches.take();
+        let condition = condition.compile(ast, self)?.value()?;
 
-        let returning_param = if let Some(final_stmt) = &ast[block].value.expr {
-            Some(
-                match ast[*final_stmt].ty.as_ir_type(&self.type_context.type_context.types, self.compiler.isa()) {
-                    MollieType::Fat(ty, metadata_ty) => MolValue::FatPtr(
-                        self.fn_builder.append_block_param(after_block, ty),
-                        self.fn_builder.append_block_param(after_block, metadata_ty),
-                    ),
-                    MollieType::Regular(ty) => MolValue::Value(self.fn_builder.append_block_param(after_block, ty)),
-                },
-            )
-        } else {
-            None
-        };
+        self.fn_builder.ins().brif(condition, then_block, &[], else_block.unwrap_or(after_block), &[]);
 
-        let returned = if let Some((otherwise, else_block)) = else_block {
-            if let MolValue::Value(cond_result) = cond_result {
-                self.fn_builder.ins().brif(cond_result, then_block, &[], else_block, &[]);
-            }
+        self.fn_builder.switch_to_block(then_block);
+        self.fn_builder.seal_block(then_block);
 
-            self.fn_builder.switch_to_block(then_block);
-            self.fn_builder.seal_block(then_block);
+        let value = block.compile(ast, self)?;
 
-            let returned = block.compile(ast, self)?;
+        self.jump_with(after_block, ast[block].ty, ast[expr].ty, value, result_type.is_some())?;
+        // Pattern bindings don't keep GC objects alive, so leaving the scope
+        // emits no code.
+        self.pop_frame();
 
-            match returned {
-                MolValue::Value(value) => self.fn_builder.ins().jump(after_block, &[ir::BlockArg::Value(value)]),
-                MolValue::Values(values) => self
-                    .fn_builder
-                    .ins()
-                    .jump(after_block, values.into_iter().map(ir::BlockArg::Value).collect::<Box<[_]>>().as_ref()),
-                MolValue::FuncRef(_) | MolValue::CaptureFuncRef(..) => todo!(),
-                MolValue::FatPtr(value, metadata) => self
-                    .fn_builder
-                    .ins()
-                    .jump(after_block, &[ir::BlockArg::Value(value), ir::BlockArg::Value(metadata)]),
-                MolValue::Nothing => self.fn_builder.ins().jump(after_block, &[]),
-            };
-
-            self.pop_frame();
-
+        if let (Some(otherwise), Some(else_block)) = (otherwise, else_block) {
             self.fn_builder.switch_to_block(else_block);
             self.fn_builder.seal_block(else_block);
 
-            otherwise.compile(ast, self)?
-        } else {
-            if let MolValue::Value(cond_result) = cond_result {
-                self.fn_builder.ins().brif(cond_result, then_block, &[], after_block, &[]);
-            }
+            let value = otherwise.compile(ast, self)?;
 
-            self.fn_builder.switch_to_block(then_block);
-            self.fn_builder.seal_block(then_block);
-
-            let returned = block.compile(ast, self)?;
-
-            self.pop_frame();
-
-            returned
-        };
-
-        match returned {
-            MolValue::Value(value) => self.fn_builder.ins().jump(after_block, &[ir::BlockArg::Value(value)]),
-            MolValue::Values(values) => self
-                .fn_builder
-                .ins()
-                .jump(after_block, values.into_iter().map(ir::BlockArg::Value).collect::<Box<[_]>>().as_ref()),
-            MolValue::FuncRef(_) | MolValue::CaptureFuncRef(..) => todo!(),
-            MolValue::FatPtr(value, metadata) => self
-                .fn_builder
-                .ins()
-                .jump(after_block, &[ir::BlockArg::Value(value), ir::BlockArg::Value(metadata)]),
-            MolValue::Nothing => self.fn_builder.ins().jump(after_block, &[]),
-        };
+            self.jump_with(after_block, ast[otherwise].ty, ast[expr].ty, value, result_type.is_some())?;
+        }
 
         self.fn_builder.switch_to_block(after_block);
         self.fn_builder.seal_block(after_block);
 
-        returning_param.map_or(Ok(MolValue::Nothing), Ok)
+        MolValue::from_values(result_type, &results)
+    }
+
+    /// Jumps to `block`, passing `value` (converted to `to`) if `with_value`.
+    fn jump_with(&mut self, block: ir::Block, from: TypeRef, to: TypeRef, value: MolValue, with_value: bool) -> CompileResult<()> {
+        let args = if with_value {
+            self.coerce(value, from, to)?.values().into_iter().map(ir::BlockArg::Value).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        self.fn_builder.ins().jump(block, &args);
+
+        Ok(())
     }
 }

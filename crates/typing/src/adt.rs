@@ -5,7 +5,8 @@ use mollie_index::{Idx, IndexBoxedSlice};
 
 use crate::{AdtVariantRef, FieldRef, ty::TypeRef};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AdtKind {
     Struct,
     View,
