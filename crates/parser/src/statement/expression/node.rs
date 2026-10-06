@@ -34,6 +34,11 @@ pub struct NodeExpr {
 }
 
 impl NodeExpr {
+    /// Parses a node (`Name { ... }`) whose name was already parsed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tokens don't form one.
     pub fn parse(name: Positioned<TypePathExpr>, parser: &mut Parser) -> ParseResult<Positioned<Self>> {
         parser.verify_if(|t| matches!(t, Token::BraceOpen | Token::From | Token::Less))?;
 
@@ -67,7 +72,15 @@ impl NodeExpr {
                         is_property_parsing = false;
 
                         continue;
-                    } else if parser.check2(&Token::Colon) && last_comma.is_none_or(|last_comma| last_comma) {
+                    }
+
+                    // Properties are separated by commas: without one, this
+                    // is an error (nothing else would consume the name).
+                    if last_comma == Some(false) {
+                        parser.consume(&Token::Comma)?;
+                    }
+
+                    if parser.check2(&Token::Colon) {
                         let name = Ident::parse(parser)?;
 
                         parser.consume(&Token::Colon)?;
@@ -76,7 +89,7 @@ impl NodeExpr {
                         let width = name.between(&value);
 
                         properties.push(width.wrap(NameValue { name, value: Some(value) }));
-                    } else if last_comma.is_none_or(|last_comma| last_comma) {
+                    } else {
                         let name = Ident::parse(parser)?;
 
                         properties.push(name.inner_map(|name| NameValue { name, value: None }));

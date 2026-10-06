@@ -13,6 +13,11 @@ use crate::{
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `Adt { field: value, ... }`. Omitted fields get their default
     /// values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_construct(
         &mut self,
         ast: &TypedAST,

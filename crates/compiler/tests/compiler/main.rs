@@ -1,4 +1,5 @@
 //! Compiles Mollie programs with the JIT and checks what they compute.
+#![allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
 
 mod arguments;
 mod arithmetic;

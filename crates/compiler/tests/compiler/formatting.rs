@@ -1,4 +1,5 @@
 //! Format specifiers of interpolated values: `"${value:spec}"`.
+#![allow(clippy::literal_string_with_formatting_args)]
 
 use crate::{run_bool, run_bool_stressed};
 

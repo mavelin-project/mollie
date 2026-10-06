@@ -108,6 +108,11 @@ pub struct TraitDecl {
 }
 
 impl TraitDecl {
+    /// Parses a trait declaration (after its attributes).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tokens don't form one.
     pub fn parse(parser: &mut Parser, attributes: Vec<Positioned<Attribute>>) -> ParseResult<Positioned<Self>> {
         let start = parser.consume(&Token::Trait)?;
         let name = NameWithGenerics::parse(parser)?;

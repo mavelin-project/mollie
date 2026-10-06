@@ -16,6 +16,11 @@ use crate::{
 
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `lhs <operator> rhs`. Assignments produce no value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_binary(&mut self, ast: &TypedAST, operator: Operator, lhs: ExprRef, rhs: ExprRef) -> CompileResult<MolValue> {
         match operator {
             Operator::Assign
@@ -93,6 +98,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Applies a binary operator to two values of type `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operator doesn't apply to values of `ty`.
     pub fn bin_op(&mut self, lhs: &MolValue, ty: TypeRef, operator: Operator, rhs: &MolValue) -> CompileResult<ir::Value> {
         let ty_name = self.display(ty);
         let unsupported = || CompileError::unsupported(format!("operator `{operator}` for `{ty_name}`"));

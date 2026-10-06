@@ -90,7 +90,7 @@ pub enum Image {
 }
 
 /// Stands for the trait `Drawable` in `ScriptObject<DrawableTrait>`.
-pub enum DrawableTrait {}
+pub struct DrawableTrait;
 
 #[derive(Default)]
 struct ImageStorage {
@@ -147,6 +147,11 @@ impl Path {
 }
 
 impl DrawContext {
+    /// Fills a rectangle with rounded corners.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the coordinates aren't finite (the path has no bounds).
     pub fn draw_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radius: CornerRadius, color: Color) {
         tracing::info!(target: "DrawContext/draw_rect", origin = format!("{x}x{y}"), size = format!("{width}x{height}"), color = %color);
 
@@ -174,6 +179,13 @@ impl DrawContext {
             .fill_path(&path.finish().unwrap(), &paint, FillRule::Winding, Transform::identity(), None);
     }
 
+    /// Draws `image` scaled to the rectangle.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the image is a URL, can't be loaded, or the rectangle has no
+    /// area. A panic in a host function stops the script, not the host.
+    #[allow(clippy::cast_precision_loss)]
     pub fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, image: GcPtr<Image>) {
         tracing::info!(target: "DrawContext/draw_image", origin = format!("{x}x{y}"), size = format!("{width}x{height}"), image = format!("{image:?}"));
 
@@ -195,6 +207,7 @@ impl DrawContext {
             .fill_rect(Rect::from_xywh(x, y, width, height).unwrap(), &paint, Transform::identity(), None);
     }
 
+    #[allow(clippy::cast_precision_loss)]
     pub fn image_size(&mut self, image: GcPtr<Image>) -> Size {
         tracing::info!(target: "DrawContext/image_size", image = format!("{image:?}"));
 
@@ -271,8 +284,13 @@ fn register(compiler: &mut Compiler<FileModuleLoader>) {
 }
 
 pub enum Command {
-    Run { name: Option<String> },
+    Run {
+        name: Option<String>,
+    },
     Dump,
+    /// Writes the stub of the host's API to `.mollie/host` in the examples,
+    /// for the language server.
+    Stub,
 }
 
 type Main = (Opaque<DrawContext>,);
@@ -340,6 +358,7 @@ fn main() {
 
     let command = match args.nth(1).as_deref() {
         Some("dump") => Command::Dump,
+        Some("stub") => Command::Stub,
         Some("run") | None => Command::Run { name: args.next() },
         Some(command) => panic!("unknown command: {command}"),
     };
@@ -354,6 +373,18 @@ fn main() {
     .unwrap_or_else(|error| panic!("can't create the compiler: {error}"));
 
     register(&mut compiler);
+
+    // Before compiling: the stub helps fixing the script when it doesn't
+    // compile.
+    if matches!(command, Command::Stub) {
+        match compiler.write_host_stub(&examples_dir) {
+            Ok(true) => println!("wrote {}", examples_dir.join(".mollie/host").display()),
+            Ok(false) => println!("{} is up to date", examples_dir.join(".mollie/host").display()),
+            Err(error) => eprintln!("can't write the stub: {error}"),
+        }
+
+        return;
+    }
 
     match compiler.compile_script::<Main, ScriptObject<DrawableTrait>>("<main>", &["context"], source) {
         Ok(()) => (),
@@ -512,6 +543,7 @@ fn main() {
                     .unwrap_or_else(|error| panic!("can't save the image: {error}"));
             }
         }
+        Command::Stub => (),
         Command::Dump => {
             println!(">> Dumping functions");
 
@@ -531,8 +563,7 @@ fn main() {
                 let generator = &impls[impl_ref];
                 let trait_name = generator
                     .origin_trait
-                    .map(|trait_ref| tcx.def_registry.traits[trait_ref].name.as_str())
-                    .unwrap_or_default();
+                    .map_or_default(|trait_ref| tcx.def_registry.traits[trait_ref].name.as_str());
 
                 for (vfunc, func) in generator.functions.iter() {
                     let decl = vfuncs.get(&vfunc).and_then(|func_id| inner.func_id_to_func.get(func_id));

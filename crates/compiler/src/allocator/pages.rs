@@ -240,7 +240,7 @@ impl Pages {
     ///
     /// `ptr` must come from [`Self::alloc`] with `layout`, and not be used
     /// anymore.
-    pub unsafe fn free_buffer(&mut self, ptr: *mut u8, layout: alloc::Layout) {
+    pub unsafe fn free_buffer(ptr: *mut u8, layout: alloc::Layout) {
         if !Self::is_small(layout) {
             return unsafe { alloc::dealloc(ptr, layout) };
         }
@@ -276,7 +276,7 @@ impl Pages {
     }
 
     /// Records that the object in a page `object` is an array.
-    pub fn set_array(&mut self, object: Object) {
+    pub fn set_array(&self, object: Object) {
         if let Some((page, index)) = self.locate(object) {
             // SAFETY: the page is a page of the heap.
             unsafe { (*page).arrays[index / 64] |= 1 << (index % 64) };
@@ -312,9 +312,9 @@ impl Pages {
     pub unsafe fn sweep(&mut self, keep_free: usize) -> (usize, usize) {
         let (mut objects, mut bytes) = (0, 0);
 
-        for class in 0..CLASSES {
-            for index in 0..self.classes[Kind::Objects as usize][class].len() {
-                let page = self.classes[Kind::Objects as usize][class][index].as_ptr();
+        for class in &self.classes[Kind::Objects as usize] {
+            for page in class {
+                let page = page.as_ptr();
 
                 for word in 0..unsafe { (*page).words() } {
                     // SAFETY: the page is a page of the heap. Buffers are in
@@ -337,7 +337,7 @@ impl Pages {
                         let array = unsafe { &*block.cast::<GcValue<Array>>() };
 
                         if let Ok(Some(layout)) = buffer_layout(array.layout, array.value.capacity) {
-                            unsafe { self.free_buffer(array.value.ptr.cast(), layout) };
+                            unsafe { Self::free_buffer(array.value.ptr.cast(), layout) };
 
                             bytes += Self::size_of(layout);
                         }

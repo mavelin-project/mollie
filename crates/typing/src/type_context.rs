@@ -684,10 +684,22 @@ impl DefRegistry {
         true
     }
 
+    /// Registers the module `name` in the root module.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_module<T: Into<String>>(&mut self, name: T, span: Span) -> Result<ModuleId, Diagnostic> {
         self.register_module_in_module(ModuleId::ZERO, name, span)
     }
 
+    /// Registers the module `name` in `parent`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_module_in_module<T: Into<String>>(&mut self, parent: ModuleId, name: T, span: Span) -> Result<ModuleId, Diagnostic> {
         let name = name.into();
 
@@ -716,10 +728,22 @@ impl DefRegistry {
         }
     }
 
+    /// Registers the ADT `ty` in the root module.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_adt(&mut self, ty: Adt, span: Span) -> Result<AdtRef, Diagnostic> {
         self.register_adt_in_module(ModuleId::ZERO, ty, span)
     }
 
+    /// Registers the ADT `ty` in `module`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_adt_in_module(&mut self, module: ModuleId, ty: Adt, span: Span) -> Result<AdtRef, Diagnostic> {
         if let Some(name) = ty.name.clone() {
             if let Some(&(_, def_type, one)) = self.modules[module].items.get(&name) {
@@ -746,10 +770,22 @@ impl DefRegistry {
         }
     }
 
+    /// Registers the trait in the root module.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_trait(&mut self, r#trait: Trait, span: Span) -> Result<TraitRef, Diagnostic> {
         self.register_trait_in_module(ModuleId::ZERO, r#trait, span)
     }
 
+    /// Registers the trait in `module`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_trait_in_module(&mut self, module: ModuleId, r#trait: Trait, span: Span) -> Result<TraitRef, Diagnostic> {
         if let Some(&(_, def_type, one)) = self.modules[module].items.get(&r#trait.name) {
             Err(Diagnostic::new(TypeError::AlreadyExists {
@@ -771,6 +807,12 @@ impl DefRegistry {
         }
     }
 
+    /// Registers the constant in `module`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_const_in_module(&mut self, module: ModuleId, constant: Const, span: Span) -> Result<ConstRef, Diagnostic> {
         if let Some(&(_, def_type, one)) = self.modules[module].items.get(&constant.name) {
             Err(Diagnostic::new(TypeError::AlreadyExists {
@@ -792,6 +834,12 @@ impl DefRegistry {
         }
     }
 
+    /// Registers the function `func` in `module`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if an item with the same name already exists in the
+    /// module.
     pub fn register_func_in_module(&mut self, module: ModuleId, func: Func, span: Span) -> Result<FuncRef, Diagnostic> {
         if let Some(&(_, def_type, one)) = self.modules[module].items.get(&func.name) {
             Err(Diagnostic::new(TypeError::AlreadyExists {
@@ -996,6 +1044,11 @@ impl ImplRegistry {
     /// The impl of `trait_ref` for `ty`, with type arguments of the trait
     /// `trait_args` if they're given (a type can implement `Source<i32>` and
     /// `Source<string>`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LookupError::NotFound`] if `ty` doesn't implement the trait,
+    /// or [`LookupError::Ambiguous`] if several impls match.
     pub fn impl_of(&self, storage: &TypeStorage, trait_ref: TraitRef, trait_args: Option<&[TypeRef]>, ty: TypeRef) -> Result<ImplRef, LookupError<ImplRef>> {
         let matches = self
             .candidates(storage, Some(trait_ref), ty)
@@ -1036,6 +1089,12 @@ impl ImplRegistry {
             .collect()
     }
 
+    /// The impl of `trait_ref` for `ty`, whatever its type arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LookupError::NotFound`] if `ty` doesn't implement the trait,
+    /// or [`LookupError::Ambiguous`] if several impls match.
     pub fn trait_impl_lookup(&self, storage: &TypeStorage, trait_ref: TraitRef, ty: TypeRef) -> Result<ImplRef, LookupError<ImplRef>> {
         self.impl_of(storage, trait_ref, None, ty)
     }
@@ -1043,6 +1102,11 @@ impl ImplRegistry {
     /// Looks up a method called `name` on `ty`. With `trait_ref == None`,
     /// inherent methods are searched first, then methods of every trait
     /// implemented for `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LookupError::NotFound`] if `ty` has no such method, or
+    /// [`LookupError::Ambiguous`] if several traits have one.
     pub fn method_lookup(
         &self,
         storage: &TypeStorage,
@@ -1252,10 +1316,23 @@ impl TyCtxt {
         self.impl_registry.register_impl(&self.types, generator)
     }
 
+    /// Like [`ImplRegistry::trait_impl_lookup`], with the types of this
+    /// context.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LookupError::NotFound`] if `ty` doesn't implement the trait,
+    /// or [`LookupError::Ambiguous`] if several impls match.
     pub fn trait_impl_lookup(&self, trait_ref: TraitRef, ty: TypeRef) -> Result<ImplRef, LookupError<ImplRef>> {
         self.impl_registry.trait_impl_lookup(&self.types, trait_ref, ty)
     }
 
+    /// Like [`ImplRegistry::method_lookup`], with the types of this context.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LookupError::NotFound`] if `ty` has no such method, or
+    /// [`LookupError::Ambiguous`] if several traits have one.
     pub fn method_lookup(&self, trait_ref: Option<TraitRef>, ty: TypeRef, name: &str) -> Result<(ImplRef, VFuncRef), LookupError<(ImplRef, VFuncRef)>> {
         self.impl_registry.method_lookup(&self.types, trait_ref, ty, name)
     }

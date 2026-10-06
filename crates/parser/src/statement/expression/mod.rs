@@ -43,7 +43,7 @@ pub use self::{
 };
 use crate::{Parse, ParseError, ParseResult, Parser};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Precedence {
     PLowest,
     PAssign,
@@ -196,7 +196,14 @@ impl Expr {
             if parser.is_empty() {
                 Ok(start.between(&end).wrap(Self::Nothing))
             } else {
-                Self::parse(&mut parser)
+                let expr = Self::parse(&mut parser)?;
+
+                // Parentheses hold one expression: `(1 2)` isn't `1`.
+                if !parser.is_empty() {
+                    return Err(ParseError::expected_token(&Token::ParenClose, parser.peek()));
+                }
+
+                Ok(expr)
             }
         } else if is_limited_expr {
             LiteralExpr::parse(parser)

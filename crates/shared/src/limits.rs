@@ -12,7 +12,9 @@ pub const MAX_NESTING: usize = 256;
 pub const MAX_INTERPOLATION_NESTING: usize = 32;
 
 /// Size (in nodes of the type, like `Pair` and its arguments) of type
-/// arguments of a generic instance. It bounds instantiations of generic
+/// arguments of a generic instance.
+///
+/// It bounds instantiations of generic
 /// functions calling themselves with bigger types (`f<T>` calling `f<T[]>`,
 /// or `f<Pair<T, T>>`, which grows exponentially).
 pub const MAX_INSTANCE_TYPE_SIZE: usize = 256;
@@ -35,7 +37,9 @@ const STACK_GROWTH: usize = 4 * 1024 * 1024;
 
 /// Runs `f`, a recursive step over the code (parsing, type checking or
 /// compiling a nested expression), on a bigger stack if the current one runs
-/// low. Together with [`MAX_NESTING`], the compiler can't overflow the stack,
+/// low.
+///
+/// Together with [`MAX_NESTING`], the compiler can't overflow the stack,
 /// whatever thread it runs on.
 pub fn grow_stack<R>(f: impl FnOnce() -> R) -> R {
     stacker::maybe_grow(RED_ZONE, STACK_GROWTH, f)

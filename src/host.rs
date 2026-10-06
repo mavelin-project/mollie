@@ -28,9 +28,11 @@
 
 use std::{
     any::{Any, TypeId},
+    io,
     marker::PhantomData,
     mem,
     panic::{self, AssertUnwindSafe},
+    path::Path,
     ptr::{self, NonNull},
     rc::Weak,
 };
@@ -403,8 +405,9 @@ impl<T: 'static> ScriptValue for Opaque<T> {
 
 /// Implements [`HostValue`] and [`ScriptValue`] for a
 /// `#[repr(C)] #[derive(Clone, Copy)]` type registered as a value type with
-/// [`Host::value_type`]: values are passed by pointer and returned by value.
-/// Value types crossing the boundary can't hold GC references.
+/// [`Host::value_type`].
+///
+/// Values are passed by pointer and returned by value. Value types crossing the boundary can't hold GC references.
 #[macro_export]
 macro_rules! host_value_type {
     ($ty:ty) => {
@@ -445,7 +448,9 @@ macro_rules! host_value_type {
 }
 
 /// A function of a script passed to the host (a closure or a function used
-/// as a value), with arguments `Args` and result `R`. It keeps its captured
+/// as a value), with arguments `Args` and result `R`.
+///
+/// It keeps its captured
 /// variables alive while it's held, and knows its program: it can only run
 /// in it, and can't be called once the program's compiler is dropped.
 pub struct ScriptCallback<Args, R> {
@@ -853,7 +858,7 @@ pub struct Host<'c, ML: ModuleLoader> {
 }
 
 impl<'c, ML: ModuleLoader> Host<'c, ML> {
-    pub fn new(compiler: &'c mut Compiler<ML>) -> Self {
+    pub const fn new(compiler: &'c mut Compiler<ML>) -> Self {
         Self {
             compiler,
             module: ModuleId::ZERO,
@@ -1131,9 +1136,13 @@ impl<'h, 'c, ML: ModuleLoader, T: 'static> TypeBuilder<'h, 'c, ML, T> {
 
     /// Registers the type.
     ///
+    /// Only the size and alignment of `T` are checked, like
+    /// [`EnumBuilder::finish`] does: fields of GC types (like [`MolStr`])
+    /// must match exactly, or the collector misses them.
+    ///
     /// # Panics
     ///
-    /// Panics if the fields don't have the layout of `T`.
+    /// Panics if the size or alignment of the fields doesn't match `T`.
     pub fn finish(self) -> TypeRef {
         let size = self.size.next_multiple_of(self.align);
 
@@ -1164,6 +1173,8 @@ impl<'h, 'c, ML: ModuleLoader, T: 'static> TypeBuilder<'h, 'c, ML, T> {
     }
 }
 
+pub type EnumVariant = (String, Vec<(String, TypeRef)>, usize, usize);
+
 /// Builds an enum registered by [`Host::enum_`] or [`Host::value_enum`].
 pub struct EnumBuilder<'h, 'c, ML: ModuleLoader, T> {
     host: &'h mut Host<'c, ML>,
@@ -1171,7 +1182,7 @@ pub struct EnumBuilder<'h, 'c, ML: ModuleLoader, T> {
     kind: Kind,
     /// Variants with their fields, and the C layout of each one so far (the
     /// discriminant, then the fields): size and alignment.
-    variants: Vec<(String, Vec<(String, TypeRef)>, usize, usize)>,
+    variants: Vec<EnumVariant>,
     _marker: PhantomData<T>,
 }
 
@@ -1220,10 +1231,15 @@ impl<'h, 'c, ML: ModuleLoader, T: 'static> EnumBuilder<'h, 'c, ML, T> {
 
     /// Registers the enum.
     ///
+    /// Only the size and alignment of `T` are checked: a variant smaller than
+    /// it should be (missing a field that fits in padding), or a field of
+    /// another type with the same layout, isn't caught. Fields of GC types
+    /// (like [`MolStr`]) must match exactly, or the collector misses them.
+    ///
     /// # Panics
     ///
-    /// Panics if it has no variants, or if the variants don't have the layout
-    /// of `T`.
+    /// Panics if it has no variants, or if the size or alignment of the
+    /// variants doesn't match `T`.
     #[track_caller]
     pub fn finish(self) -> TypeRef {
         assert!(!self.variants.is_empty(), "`{}` has no variants", self.name);
@@ -1422,6 +1438,17 @@ pub trait CompilerExt {
     /// Returns an error if there's no such program, or if it has another
     /// signature.
     fn script_fn<Args: ScriptArgs + 'static, R: ScriptValue>(&self, name: &str) -> CompileResult<ScriptFn<'_, Args, R>>;
+
+    /// Writes the stub of everything the host registered to
+    /// `<project>/.mollie/host`, where the language server finds it (see
+    /// [`HostStub::update`](crate::stub::HostStub::update)): call it after
+    /// registering, e.g. on every start of the game. Returns whether files
+    /// were written.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a file can't be read, written or removed.
+    fn write_host_stub(&self, project: &Path) -> io::Result<bool>;
 }
 
 /// Compiles a program for [`CompilerExt::compile_script`], with the
@@ -1496,6 +1523,10 @@ impl<ML: ModuleLoader> CompilerExt for Compiler<ML> {
         }
 
         result
+    }
+
+    fn write_host_stub(&self, project: &Path) -> io::Result<bool> {
+        crate::stub::host_stub(self).update(&project.join(".mollie").join("host"))
     }
 
     fn script_fn<Args: ScriptArgs + 'static, R: ScriptValue>(&self, name: &str) -> CompileResult<ScriptFn<'_, Args, R>> {
@@ -1611,7 +1642,9 @@ pub struct RawObject {
 }
 
 /// A trait object of a script (a value of a trait registered with
-/// [`Host::trait_`], marked by `M`). It keeps the value alive while it's held,
+/// [`Host::trait_`], marked by `M`).
+///
+/// It keeps the value alive while it's held,
 /// and knows its program: its functions run in it, and can't be called once
 /// the program's compiler is dropped.
 pub struct ScriptObject<M> {

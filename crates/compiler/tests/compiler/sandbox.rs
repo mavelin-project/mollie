@@ -266,7 +266,7 @@ fn restricted_module_is_not_visible() {
         let error = compile_error(source);
 
         assert!(
-            matches!(&error, CompileError::Type(diagnostics) if diagnostics.iter().any(|diagnostic| matches!(&diagnostic.error, TypeError::Unavailable { name } if name == "secret"))),
+            matches!(&error, CompileError::Type(diagnostics) if diagnostics.iter().any(|diagnostic| matches!(&*diagnostic.error, TypeError::Unavailable { name } if name == "secret"))),
             "{error:?}"
         );
     }

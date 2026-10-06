@@ -1,3 +1,5 @@
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+
 use std::ptr::from_ref;
 
 use cranelift::{
@@ -235,6 +237,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Stops the program, and continues in a block that's never reached,
     /// producing a zero value of `ty` for the code after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ty` has no representation.
     pub fn unreachable(&mut self, ty: TypeRef) -> CompileResult<MolValue> {
         self.stop(TrapKind::Unreachable);
         self.zero_value(ty)
@@ -259,6 +265,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Compiles `return value` (or `return`), producing a value of `ty` for
     /// the code after it, which is never reached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_return(&mut self, ast: &TypedAST, value: Option<ExprRef>, ty: TypeRef) -> CompileResult<MolValue> {
         let returns = self.return_ty.ok_or_else(|| CompileError::unsupported("`return` outside of a function"))?;
         let value = match value {
@@ -281,6 +292,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Compiles `panic(message)`, producing a value of `ty` for the code after
     /// it, which is never reached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_panic(&mut self, ast: &TypedAST, message: ExprRef, ty: TypeRef) -> CompileResult<MolValue> {
         let message = message.compile(ast, self)?.value()?;
         let panic = self.compiler.runtime.panic;
@@ -405,11 +421,22 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
         types::resolve(&self.type_context.tcx, ty, &self.generics)
     }
 
+    /// The representation of values of `ty` (`None` for `void`), with the
+    /// generics of the function applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a value type in `ty` wasn't compiled.
     pub fn ir_type(&self, ty: TypeRef) -> CompileResult<Option<MollieType>> {
         types::ir_type(&self.type_context.tcx, &self.compiler.adt_types, ty, &self.generics, self.isa())
     }
 
     /// Like [`FunctionCompiler::ir_type`], but `void` is an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ty` is `void`, or a value type in it wasn't
+    /// compiled.
     pub fn value_type(&self, ty: TypeRef) -> CompileResult<MollieType> {
         self.ir_type(ty)?
             .ok_or_else(|| CompileError::unsupported(format!("`void` used as a value of `{}`", self.display(ty))))
@@ -423,6 +450,13 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
         self.type_context.tcx.display_of(self.resolve(ty)).to_string()
     }
 
+    /// The signature of functions of type `func_ty` (taking an environment last
+    /// with `with_env`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `func_ty` isn't a function type, or a value type in
+    /// it wasn't compiled.
     pub fn signature(&self, func_ty: TypeRef, with_env: bool) -> CompileResult<ir::Signature> {
         types::signature(
             &self.type_context.tcx,
@@ -527,6 +561,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
         }
     }
 
+    /// Stores `value` of representation `ty` at `ptr + offset`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `value` doesn't have the representation `ty`.
     pub fn store_value(&mut self, ty: MollieType, value: &MolValue, ptr: ir::Value, offset: i32) -> CompileResult<()> {
         match (ty, value) {
             (MollieType::Regular(_), &MolValue::Value(value)) => {
@@ -546,6 +585,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// Compiled layout of an ADT type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ty` isn't an ADT, or wasn't compiled.
     pub fn compiled_adt(&self, ty: TypeRef) -> CompileResult<&CompiledAdt> {
         let hash = self.hash(ty);
 
@@ -556,6 +599,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// Representation, offset and type of a field of an ADT.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `adt_ty` wasn't compiled, or doesn't have the field.
     pub fn field_layout(&self, adt_ty: TypeRef, variant: AdtVariantRef, field: FieldRef) -> CompileResult<(MollieType, i32, TypeRef)> {
         let compiled = self.compiled_adt(adt_ty)?;
         let (field_layout, field_ty) = compiled
@@ -637,6 +684,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Declares a variable. If it holds a GC reference, every value it gets is
     /// described by stack maps.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `value` doesn't have the representation of `ty`.
     pub fn declare(&mut self, name: impl Into<String>, ty: TypeRef, value: MolValue) -> CompileResult<()> {
         let name = name.into();
         let gc_pointer = self.gc_pointer(ty, &value);
@@ -703,10 +754,19 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// Declares a variable bound by a pattern or captured by a closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `value` doesn't have the representation of `ty`.
     pub fn declare_binding(&mut self, name: impl Into<String>, ty: TypeRef, value: MolValue) -> CompileResult<()> {
         self.declare(name, ty, value)
     }
 
+    /// The value of the variable `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there's no variable called `name`.
     pub fn read_var(&mut self, name: &str) -> CompileResult<MolValue> {
         self.get_var(name).map_or_else(
             || Err(CompileError::unsupported(format!("unknown variable `{name}`"))),
@@ -714,6 +774,12 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
         )
     }
 
+    /// Gives the variable `name` the value `value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there's no variable called `name`, or `value`
+    /// doesn't have its representation.
     pub fn assign_var(&mut self, name: &str, value: MolValue) -> CompileResult<()> {
         let variable = self
             .get_var(name)
@@ -738,6 +804,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Declares variables for function parameters, starting from block
     /// parameter `index`. Returns the index of the next block parameter.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there are fewer block parameters than parameters, or
+    /// a value type wasn't compiled.
     pub fn bind_params<'n>(&mut self, mut index: usize, params: impl IntoIterator<Item = (&'n str, TypeRef)>) -> CompileResult<usize> {
         for (name, ty) in params {
             let block_params = self.fn_builder.block_params(self.entry_block).to_vec();
@@ -785,6 +856,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Converts a value of type `from` to type `to`: concrete values become
     /// trait objects (or `any`), other values stay as they are.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `from` doesn't implement the trait of `to`, or its
+    /// vtable wasn't compiled.
     pub fn coerce(&mut self, value: MolValue, from: TypeRef, to: TypeRef) -> CompileResult<MolValue> {
         let from_is_dynamic = matches!(self.types()[self.resolve(from)], Type::Trait(..) | Type::Primitive(PrimitiveType::Any));
         let target = self.types()[self.resolve(to)].clone();
@@ -820,6 +896,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// A GC copy of the inline `value` of type `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ty` wasn't compiled.
     pub fn box_value(&mut self, ty: TypeRef, value: &MolValue) -> CompileResult<ir::Value> {
         let layout = self.compiled_adt(ty)?.type_layout;
         let ir_type = self.value_type(ty)?;
@@ -835,6 +915,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// Pointer to the vtable of `trait_ref<trait_args...>` implemented for
     /// `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the vtable wasn't compiled.
     pub fn vtable_ptr(&mut self, ty: TypeRef, trait_ref: TraitRef, trait_args: &[TypeRef]) -> CompileResult<ir::Value> {
         let trait_name = self.type_context.tcx.name_of_trait(trait_ref).to_owned();
         let trait_args = trait_args.iter().map(|&arg| self.resolve(arg)).collect::<Vec<_>>();
@@ -856,6 +940,11 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
 
     /// A function value (code and environment) calling `func_id`, a function
     /// of type `func_ty` that doesn't take an environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trampoline taking the environment can't be
+    /// compiled.
     pub fn func_value(&mut self, func_id: FuncId, func_ty: TypeRef) -> CompileResult<MolValue> {
         let trampoline = if let Some(&trampoline) = self.compiler.trampolines.get(&func_id) {
             trampoline
@@ -918,6 +1007,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// GC layout of array elements of type `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a value type in `ty` wasn't compiled.
     pub fn element_layout(&mut self, ty: TypeRef) -> CompileResult<&'static TypeLayout> {
         let ir_type = self.value_type(ty)?;
         let fields = types::layout_fields(&self.type_context.tcx, &self.compiler.adt_types, ty, &self.generics)?;
@@ -926,6 +1019,10 @@ impl<'a, M: Module> FunctionCompiler<'a, M> {
     }
 
     /// Allocates an array of `values` with element type `element`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a value type in `element` wasn't compiled.
     pub fn array_of(&mut self, element: TypeRef, values: &[MolValue]) -> CompileResult<ir::Value> {
         let element_type = self.value_type(element)?;
         let layout = self.element_layout(element)?;

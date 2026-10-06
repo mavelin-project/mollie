@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 mollie-shared = { workspace = true }
 mollie-lexer = { workspace = true }
-peekmore = { workspace = true }
 serde = { workspace = true }
 equivalent = "1.0.2"
 mollie-typing.workspace = true

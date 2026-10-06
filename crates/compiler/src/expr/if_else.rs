@@ -7,6 +7,11 @@ use crate::{CompileTypedAST, MolValue, error::CompileResult, func::FunctionCompi
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `if condition { block } else otherwise`. Only `if`s with an
     /// `else` produce a value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_if(&mut self, ast: &TypedAST, expr: ExprRef, condition: ExprRef, block: BlockRef, otherwise: Option<ExprRef>) -> CompileResult<MolValue> {
         let result_type = if otherwise.is_some() { self.ir_type(ast[expr].ty)? } else { None };
 

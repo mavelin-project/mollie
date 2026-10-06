@@ -1,0 +1,5 @@
+extern value struct Color { red: u8, green: u8, blue: u8 }
+extern value struct CornerRadius { top_left: f32, top_right: f32, bottom_left: f32, bottom_right: f32 }
+extern value struct Size { width: f32, height: f32 }
+extern value struct Point { x: f32, y: f32 }
+extern enum Image { Path { value: string }, Url { value: string } }

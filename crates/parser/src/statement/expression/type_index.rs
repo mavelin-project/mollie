@@ -12,6 +12,11 @@ pub struct TypePathSegment {
 }
 
 impl TypePathSegment {
+    /// Parses a path segment whose name was already parsed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tokens don't form one.
     pub fn parse_from(name: Positioned<Ident>, parser: &mut Parser, special_case: bool) -> ParseResult<Positioned<Self>> {
         let args = if parser.check(&Token::PathSep) && parser.check2(&Token::Less) {
             parser.consume(&Token::PathSep)?;
@@ -47,6 +52,11 @@ impl fmt::Display for TypePathExpr {
 }
 
 impl TypePathExpr {
+    /// Parses a type path whose first segment was already parsed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tokens don't form one.
     pub fn parse(init: Positioned<TypePathSegment>, parser: &mut Parser, special_case: bool) -> ParseResult<Positioned<Self>> {
         let mut segments = vec![init];
 

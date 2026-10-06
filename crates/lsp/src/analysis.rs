@@ -84,8 +84,12 @@ impl Project {
     }
 }
 
+pub type StubModules = Vec<(String, String)>;
+pub type StubPaths = Vec<(String, PathBuf)>;
+pub type Stub = (String, StubModules, StubPaths);
+
 /// A stub of the host's API in `dir`: `lib.mol`, and its modules by path.
-fn read_stub(dir: &Path) -> Option<(String, Vec<(String, String)>, Vec<(String, PathBuf)>)> {
+fn read_stub(dir: &Path) -> Option<Stub> {
     fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
         for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
             let path = entry.path();

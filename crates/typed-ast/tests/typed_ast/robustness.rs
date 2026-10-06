@@ -37,6 +37,7 @@ fn prefixes_of_a_real_program() {
 }
 
 #[test]
+#[allow(clippy::literal_string_with_formatting_args)]
 fn malformed_programs() {
     let failed = panicking([
         "()",

@@ -10,6 +10,11 @@ use crate::{
 
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `[a, b, ...]`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_array(&mut self, ast: &TypedAST, expr: ExprRef, elements: &[ExprRef]) -> CompileResult<MolValue> {
         // The expected type, e.g. an array of trait objects for a field,
         // decides the representation of elements.
@@ -29,6 +34,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles `target[index]`, trapping if the index is out of bounds.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_array_index(&mut self, ast: &TypedAST, expr: ExprRef, target: ExprRef, index: ExprRef) -> CompileResult<MolValue> {
         let array = target.compile(ast, self)?.value()?;
         let index = index.compile(ast, self)?.value()?;

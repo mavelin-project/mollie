@@ -12,6 +12,11 @@ use crate::{
 
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `target.field`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_field_access(&mut self, ast: &TypedAST, target: ExprRef, field: FieldRef) -> CompileResult<MolValue> {
         let target_value = target.compile(ast, self)?;
         let (field_type, offset, _) = self.field_layout(ast[target].ty, AdtVariantRef::ZERO, field)?;
@@ -22,6 +27,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     /// The field of representation `field_type` at `offset` of `value` (of
     /// the ADT type `ty`): loaded from the object, or taken from the inline
     /// value of a value type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `value` isn't a value of an ADT.
     pub fn read_field(&mut self, value: &MolValue, ty: TypeRef, field_type: MollieType, offset: i32) -> CompileResult<MolValue> {
         match value {
             MolValue::Inline(values) => {

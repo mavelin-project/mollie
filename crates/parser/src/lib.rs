@@ -2,14 +2,13 @@ mod error;
 mod statement;
 mod ty;
 
-use std::{fmt, vec::IntoIter};
+use std::{fmt, mem};
 
 use mollie_lexer::{Lexer, Token};
 use mollie_shared::{
     Positioned,
     limits::{MAX_NESTING, grow_stack},
 };
-use peekmore::{PeekMore, PeekMoreIterator};
 
 pub use self::{
     error::{ParseError, ParseResult},
@@ -17,30 +16,38 @@ pub use self::{
     ty::*,
 };
 
+/// Parses tokens of a buffer it borrows.
+///
+/// It holds the tokens it didn't consume yet. Consumed tokens are taken out
+/// of the buffer (leaving a placeholder), so they're owned without being
+/// cloned, and code inside brackets is parsed by a parser of that part of the
+/// buffer (see [`Parser::split`]) without moving tokens around.
 #[derive(Debug)]
-pub struct Parser {
-    tokens: PeekMoreIterator<IntoIter<Positioned<Token>>>,
+pub struct Parser<'t> {
+    tokens: &'t mut [Positioned<Token>],
     /// How deeply the code being parsed is nested (see [`Parser::nested`]).
     depth: usize,
 }
 
-impl Parser {
+/// What's left in the buffer in place of a consumed token.
+const fn placeholder() -> Positioned<Token> {
+    Positioned {
+        value: Token::EOF,
+        span: mollie_shared::Span::new(0, 0, mollie_shared::SpanRange::new(0, 0, 0, 0)),
+    }
+}
+
+impl<'t> Parser<'t> {
     #[must_use]
-    pub fn new(tokens: Vec<Positioned<Token>>) -> Self {
-        Self {
-            tokens: tokens.into_iter().peekmore(),
-            depth: 0,
-        }
+    pub const fn new(tokens: &'t mut [Positioned<Token>]) -> Self {
+        Self { tokens, depth: 0 }
     }
 
-    /// A parser of `tokens` nested in the code of this one (e.g. inside
-    /// parentheses or an interpolation), which counts as nested as deeply.
+    /// A parser of `tokens` nested in the code of this one (e.g. inside an
+    /// interpolation), which counts as nested as deeply.
     #[must_use]
-    pub fn sub(&self, tokens: Vec<Positioned<Token>>) -> Self {
-        Self {
-            tokens: tokens.into_iter().peekmore(),
-            depth: self.depth,
-        }
+    pub const fn sub<'s>(&self, tokens: &'s mut [Positioned<Token>]) -> Parser<'s> {
+        Parser { tokens, depth: self.depth }
     }
 
     /// Fails if code nested `extra` levels deeper than the current code would
@@ -53,7 +60,7 @@ impl Parser {
         if self.depth + extra > MAX_NESTING {
             Err(ParseError::new(
                 format!("the code is nested too deeply (more than {MAX_NESTING} levels)"),
-                self.tokens.peek().map(|token| token.span),
+                self.peek().map(|token| token.span),
             ))
         } else {
             Ok(())
@@ -82,71 +89,82 @@ impl Parser {
     ///
     /// Will return an error if next token is not equal to "start" or can't find
     /// "end" token.
+    ///
+    /// The returned parser parses the tokens between `start` and the matching
+    /// `end`, in place: they're the part of the buffer this parser skips.
     pub fn split(&mut self, start: &Token, end: &Token) -> ParseResult<([Positioned<Token>; 2], Self)> {
         let start_position = self.consume(start)?;
-        let mut tokens = Vec::new();
-        let mut skip = 0;
-        let mut end_position = None;
+        let mut skip = 0usize;
+        let mut end_index = None;
 
-        while let Some(token) = self.next() {
+        for (index, token) in self.tokens.iter().enumerate() {
             if &token.value == start {
                 skip += 1;
             } else if &token.value == end {
                 if skip == 0 {
-                    end_position = Some(token);
+                    end_index = Some(index);
 
                     break;
                 }
 
                 skip -= 1;
             }
-
-            tokens.push(token);
         }
 
-        if let Some(end_position) = end_position {
-            Ok(([start_position, end_position], self.sub(tokens)))
-        } else {
-            Err(ParseError::expected_token(end, tokens.last()))
-        }
+        let Some(end_index) = end_index else {
+            return Err(ParseError::expected_token(end, self.tokens.last()));
+        };
+
+        let (inside, rest) = mem::take(&mut self.tokens).split_at_mut(end_index);
+        let Some((end_position, rest)) = rest.split_first_mut() else {
+            unreachable!("the end token was found");
+        };
+
+        self.tokens = rest;
+
+        Ok(([start_position, mem::replace(end_position, placeholder())], Parser {
+            tokens: inside,
+            depth: self.depth,
+        }))
     }
 
     /// Consumes the current token only if it exists and is equal to `value`.
     pub fn try_consume(&mut self, value: &Token) -> bool {
-        self.tokens.next_if(|token| &token.value == value).is_some()
+        self.next_if(|token| token == value).is_some()
     }
 
     /// Consumes the current token only if it exists and is equal to `value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error of `func`.
     pub fn try_consume_then<T, F: FnOnce(&mut Self) -> ParseResult<T>>(&mut self, value: &Token, func: F) -> ParseResult<Option<T>> {
-        if self.tokens.next_if(|token| &token.value == value).is_some() {
-            func(self).map(Some)
-        } else {
-            Ok(None)
-        }
+        if self.try_consume(value) { func(self).map(Some) } else { Ok(None) }
     }
 
-    fn verify_nth(&mut self, index: usize, token: &Token) -> ParseResult<()> {
-        if self.tokens.peek_nth(index).is_some_and(|value| &value.value == token) {
+    fn verify_nth(&self, index: usize, token: &Token) -> ParseResult<()> {
+        if self.peek_nth(index).is_some_and(|value| &value.value == token) {
             Ok(())
         } else {
-            Err(ParseError::expected_token(token, self.tokens.peek_nth(index)))
+            Err(ParseError::expected_token(token, self.peek_nth(index)))
         }
     }
 
-    fn verify_nth_if<F: Fn(&Token) -> bool>(&mut self, index: usize, func: F) -> ParseResult<()> {
-        if self.tokens.peek_nth(index).is_some_and(|value| func(&value.value)) {
+    fn verify_nth_if<F: Fn(&Token) -> bool>(&self, index: usize, func: F) -> ParseResult<()> {
+        if self.peek_nth(index).is_some_and(|value| func(&value.value)) {
             Ok(())
         } else {
-            Err(ParseError::unexpected_token(self.tokens.peek_nth(index)))
+            Err(ParseError::unexpected_token(self.peek_nth(index)))
         }
     }
 
-    pub fn len(&self) -> usize {
+    /// Number of tokens left.
+    pub const fn len(&self) -> usize {
         self.tokens.len()
     }
 
-    pub fn is_empty(&mut self) -> bool {
-        self.tokens.peek().is_none()
+    pub const fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
     }
 
     /// # Errors
@@ -225,17 +243,17 @@ impl Parser {
 
     /// Returns the `bool` result of `func` if the next token exists.
     pub fn check_if<F: Fn(&Token) -> bool>(&mut self, func: F) -> bool {
-        self.tokens.peek_nth(0).is_some_and(|value| func(&value.value))
+        self.peek_nth(0).is_some_and(|value| func(&value.value))
     }
 
     /// Returns the `bool` result of `func` if the next token exists.
     pub fn check2_if<F: Fn(&Token) -> bool>(&mut self, func: F) -> bool {
-        self.tokens.peek_nth(1).is_some_and(|value| func(&value.value))
+        self.peek_nth(1).is_some_and(|value| func(&value.value))
     }
 
     /// Returns the `bool` result of `func` if the next token exists.
     pub fn check3_if<F: Fn(&Token) -> bool>(&mut self, func: F) -> bool {
-        self.tokens.peek_nth(2).is_some_and(|value| func(&value.value))
+        self.peek_nth(2).is_some_and(|value| func(&value.value))
     }
 
     /// # Errors
@@ -387,34 +405,45 @@ impl Parser {
 
     /// Consumes the current token and returns it wrapped in `Some` if it
     /// exists, otherwise returning `None`.
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<Positioned<Token>> {
-        self.tokens.next()
+    #[allow(clippy::should_implement_trait, clippy::mem_replace_with_default)]
+    pub const fn next(&mut self) -> Option<Positioned<Token>> {
+        let Some((first, rest)) = mem::replace(&mut self.tokens, &mut []).split_first_mut() else {
+            return None;
+        };
+
+        self.tokens = rest;
+
+        Some(mem::replace(first, placeholder()))
     }
 
     /// Peeks the current token and returns a reference to it wrapped in `Some`
     /// if it exists, otherwise returning `None`.
-    pub fn peek(&mut self) -> Option<&Positioned<Token>> {
-        self.tokens.peek()
+    pub const fn peek(&self) -> Option<&Positioned<Token>> {
+        self.tokens.first()
     }
 
     /// Peeks the `n`-th token from the current one (`0` is the current one).
-    pub fn peek_nth(&mut self, n: usize) -> Option<&Positioned<Token>> {
-        self.tokens.peek_nth(n)
+    pub fn peek_nth(&self, n: usize) -> Option<&Positioned<Token>> {
+        self.tokens.get(n)
     }
 
     /// Consumes the current token and returns it wrapped in `Some` if the
     /// result of the `func` function is `true`, otherwise returning `None`.
     pub fn next_if<F: Fn(&Token) -> bool>(&mut self, func: F) -> Option<Positioned<Token>> {
-        self.tokens.next_if(|value| func(&value.value))
+        if self.peek().is_some_and(|token| func(&token.value)) {
+            self.next()
+        } else {
+            None
+        }
     }
 
+    /// Takes the tokens left.
     #[must_use]
     pub fn collect(self) -> Vec<Positioned<Token>> {
-        self.tokens.collect()
+        self.tokens.iter_mut().map(|token| mem::replace(token, placeholder())).collect()
     }
 
-    pub fn expected_token<T: fmt::Display>(&mut self, expected: T) -> ParseError {
+    pub fn expected_token<T: fmt::Display>(&self, expected: T) -> ParseError {
         self.peek().map_or_else(
             || ParseError(format!("Expected {expected}, found nothing"), None),
             |found| ParseError(format!("Expected {expected}, found {}", found.value), Some(found.span)),
@@ -427,7 +456,8 @@ pub trait Parse: Sized {
     ///
     /// Returns error if parsing failed
     fn parse_value<T: AsRef<str>>(value: T) -> ParseResult<Positioned<Self>> {
-        let mut parser = Parser::new(Lexer::lex(value));
+        let mut tokens = Lexer::lex(value);
+        let mut parser = Parser::new(&mut tokens);
 
         let value = Self::parse(&mut parser)?;
 
@@ -450,17 +480,37 @@ mod tests {
 
     #[test]
     fn test_node_parsing() {
-        let tokens = Lexer::lex("Option::Some(value)");
-        let mut parser = Parser::new(tokens);
+        let mut tokens = Lexer::lex("Option::Some(value)");
+        let mut parser = Parser::new(&mut tokens);
         let expr = Expr::parse(&mut parser);
 
         println!("{expr:#?}");
     }
 
     fn parse_expr(source: &str) -> Expr {
-        let mut parser = Parser::new(Lexer::lex(source));
+        let mut tokens = Lexer::lex(source);
+        let mut parser = Parser::new(&mut tokens);
 
         Expr::parse(&mut parser).expect("the expression must parse").value
+    }
+
+    #[test]
+    fn parentheses_hold_one_expression() {
+        let Expr::Binary(product) = parse_expr("((a + b) * (c))") else {
+            panic!("expected a product");
+        };
+
+        assert!(matches!(product.lhs.value, Expr::Binary(_)));
+        assert!(matches!(parse_expr("()"), Expr::Nothing));
+        // The parser goes on after the parentheses.
+        assert!(matches!(parse_expr("(a) + (b)"), Expr::Binary(_)));
+
+        // Tokens after the expression are an error, not dropped.
+        for source in ["(1 2)", "(a + b c d)", "((a) b)"] {
+            let mut tokens = Lexer::lex(source);
+
+            assert!(Expr::parse(&mut Parser::new(&mut tokens)).is_err(), "{source}");
+        }
     }
 
     #[test]

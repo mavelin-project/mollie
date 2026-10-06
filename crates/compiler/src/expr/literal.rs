@@ -12,6 +12,11 @@ use crate::{
 };
 
 impl<M: Module> FunctionCompiler<'_, M> {
+    /// Compiles a literal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a string literal can't be stored with the code.
     pub fn compile_literal(&mut self, ast: &TypedAST, expr: ExprRef, literal: &LitExpr) -> CompileResult<MolValue> {
         Ok(match literal {
             &LitExpr::Int(value) => match self.value_type(ast[expr].ty)? {
@@ -25,6 +30,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// A string constant: a pointer to a static string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the string can't be stored with the code.
     pub fn string(&mut self, value: &str) -> CompileResult<MolValue> {
         let data_id = self.compiler.string_object(value)?;
 
@@ -32,6 +41,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles a constant (a default value of a field) of type `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the constant isn't a value of `ty`.
     pub fn compile_constant(&mut self, ty: TypeRef, constant: &ConstantValue) -> CompileResult<MolValue> {
         let ptr_type = self.ptr_type();
 

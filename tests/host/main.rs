@@ -84,6 +84,10 @@ pub struct HostItems {
 /// - host methods `Coin::doubled(self) -> i32`, `Coin::split(self) -> Coin` and
 ///   `Coin::describe(self, prefix: string) -> string`;
 /// - a host impl of `Valued` for `Coin`.
+///
+/// # Panics
+///
+/// Panics if the compiler can't be created or an item can't be registered.
 pub fn compiler() -> (Compiler<()>, HostItems) {
     let mut compiler = Compiler::with_symbols((), [
         ("host_coin_doubled", coin_doubled as *const u8),
@@ -130,7 +134,7 @@ pub struct Kept<R> {
     /// Compiled code is valid only while its compiler is alive: writable data
     /// of the JIT module (like the state of the sandbox, read by every
     /// function) is unmapped when the compiler is dropped.
-    _compiler: Compiler<()>,
+    compiler: Compiler<()>,
     /// Another program must not collect objects of this one meanwhile.
     /// Dropped last.
     _guard: MutexGuard<'static, ()>,
@@ -138,6 +142,10 @@ pub struct Kept<R> {
 
 /// Like [`run`], but keeps the compiler and the lock of the garbage collector
 /// with the result.
+///
+/// # Panics
+///
+/// Panics if the program doesn't compile, or traps.
 pub fn run_kept<R: Copy>(source: &str, returns: impl FnOnce(&HostItems, &mut Compiler<()>) -> TypeRef, stress: bool) -> Kept<R> {
     let guard = lock();
     let (mut compiler, items) = compiler();
@@ -166,15 +174,19 @@ pub fn run_kept<R: Copy>(source: &str, returns: impl FnOnce(&HostItems, &mut Com
 
     Kept {
         value,
-        _compiler: compiler,
+        compiler,
         _guard: guard,
     }
 }
 
 impl<R> Kept<R> {
     /// Runs `call`, which calls compiled code of the program.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the program traps.
     pub fn run<T>(&self, call: impl FnOnce() -> T) -> T {
-        self._compiler
+        self.compiler
             .inner
             .run(Limits::default(), call)
             .unwrap_or_else(|trap| panic!("the program trapped: {trap}"))

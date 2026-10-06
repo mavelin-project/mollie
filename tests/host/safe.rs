@@ -109,7 +109,7 @@ fn value_types_cross_by_value() {
 
     host.value_type::<Vec2>("Vec2").field::<f32>("x").field::<f32>("y").finish();
     host.function("scale", |v: Vec2, k: f32| Vec2 { x: v.x * k, y: v.y * k });
-    host.function("dot", |a: Vec2, b: Vec2| a.x * b.x + a.y * b.y);
+    host.function("dot", |a: Vec2, b: Vec2| a.y.mul_add(b.y, a.x * b.x));
 
     assert_eq!(
         run(
@@ -275,20 +275,22 @@ fn enums_of_the_host() {
     );
 }
 
-// #[test]
-// #[should_panic(expected = "don't match the layout")]
-// fn enums_must_match_their_rust_type() {
-//     let mut compiler = compiler();
+#[test]
+#[should_panic(expected = "don't match the layout")]
+fn enums_must_match_their_rust_type() {
+    let mut compiler = compiler();
 
-//     // `Rect` is missing a field.
-//     Host::new(&mut compiler)
-//         .enum_::<Shape>("Shape")
-//         .variant("Circle")
-//         .field::<f32>("radius")
-//         .variant("Rect")
-//         .field::<f32>("width")
-//         .finish();
-// }
+    // `height` is an `f64`: `Rect` takes 24 bytes, `Shape` 16. (A missing
+    // `f32` would fit in the padding: only sizes and alignments are checked.)
+    Host::new(&mut compiler)
+        .enum_::<Shape>("Shape")
+        .variant("Circle")
+        .field::<f32>("radius")
+        .variant("Rect")
+        .field::<f32>("width")
+        .field::<u64>("height")
+        .finish();
+}
 
 #[test]
 fn declarations_of_the_host() {
@@ -368,7 +370,7 @@ fn value_types_cross_with_programs() {
 }
 
 /// Stands for the trait `Area`.
-enum AreaTrait {}
+struct AreaTrait;
 
 fn area_compiler() -> Compiler<()> {
     let mut compiler = compiler();
@@ -423,7 +425,7 @@ Square { side: 3 }",
 }
 
 /// Stands for the trait `Shape`.
-enum ShapeTrait {}
+struct ShapeTrait;
 
 #[test]
 fn trait_functions_take_and_return_value_types() {
@@ -546,6 +548,31 @@ fn arrays_of_scripts() {
             .call((array,), Limits::default()),
         Ok(10 + 2 + 3 + 4)
     );
+}
+
+#[test]
+fn stubs_are_written_only_when_they_change() {
+    let _guard = lock();
+    let project = std::env::temp_dir().join(format!("mollie-stub-{}", std::process::id()));
+    let mut compiler = compiler();
+
+    Host::new(&mut compiler).module("graphics").function("width", || 1);
+
+    assert_eq!(compiler.write_host_stub(&project).ok(), Some(true));
+    // Nothing changed: editors aren't disturbed.
+    assert_eq!(compiler.write_host_stub(&project).ok(), Some(false));
+    assert!(project.join(".mollie/host/graphics.mol").exists());
+
+    // Another host without `graphics`: its file goes.
+    let mut other = self::compiler();
+
+    Host::new(&mut other).module("audio").function("volume", || 1);
+
+    assert_eq!(other.write_host_stub(&project).ok(), Some(true));
+    assert!(!project.join(".mollie/host/graphics.mol").exists());
+    assert!(project.join(".mollie/host/audio.mol").exists());
+
+    std::fs::remove_dir_all(&project).ok();
 }
 
 #[test]

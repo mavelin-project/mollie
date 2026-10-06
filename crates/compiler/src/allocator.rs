@@ -30,6 +30,7 @@
 //!
 //! Compiled code and the runtime find the heap of the program they belong to
 //! through the innermost run on the thread (see [`crate::sandbox::run`]).
+#![allow(clippy::cast_ptr_alignment)]
 
 use std::{
     alloc,
@@ -122,8 +123,10 @@ pub struct Array {
 type Object = *mut GcValue<()>;
 type Hasher = hash::BuildHasherDefault<AddressHasher>;
 
-/// Hashes addresses (of objects and code): cheaper than the default hasher,
-/// which matters since collections look up every reference. Addresses are
+/// Hashes addresses (of objects and code).
+///
+/// It's cheaper than the default hasher, which matters since collections look
+/// up every reference. Addresses are
 /// aligned, so their bits are mixed (a multiplication alone would keep the
 /// low bits zero, which hash tables use to pick buckets).
 #[derive(Default)]
@@ -316,14 +319,14 @@ const fn object_of(value_ptr: *const ()) -> Object {
 /// # Safety
 ///
 /// `object` must be a live object of a heap, which forgets it.
-unsafe fn free_large(pages: &mut Pages, object: Object) -> usize {
+unsafe fn free_large(object: Object) -> usize {
     let header = unsafe { &*object };
     let mut freed = 0;
     let layout = if header.info.contains(GcValueInfo::ARRAY) {
         let array = unsafe { &*object.cast::<GcValue<Array>>() };
 
         if let Ok(Some(layout)) = buffer_layout(header.layout, array.value.capacity) {
-            unsafe { pages.free_buffer(array.value.ptr.cast(), layout) };
+            unsafe { Pages::free_buffer(array.value.ptr.cast(), layout) };
 
             freed += Pages::size_of(layout);
         }
@@ -549,7 +552,7 @@ impl HeapState {
     unsafe fn sweep(&mut self) -> usize {
         let mut freed = 0;
         let mut freed_objects = 0;
-        let Self { pages, large, .. } = self;
+        let Self { large, .. } = self;
 
         // Before pages: buffers of large arrays may be in pages.
         large.retain(|&object| {
@@ -561,7 +564,7 @@ impl HeapState {
                 return true;
             }
 
-            freed += unsafe { free_large(pages, object) };
+            freed += unsafe { free_large(object) };
             freed_objects += 1;
 
             false
@@ -752,7 +755,7 @@ impl HeapState {
 
         if object.is_null() {
             if let Some(layout) = buffer {
-                unsafe { self.pages.free_buffer(buffer_ptr.cast(), layout) };
+                unsafe { Pages::free_buffer(buffer_ptr.cast(), layout) };
             }
 
             out_of_memory(may_collect, header_layout);
@@ -819,7 +822,8 @@ impl HeapState {
                         if !new_ptr.is_null() {
                             unsafe {
                                 new_ptr.copy_from_nonoverlapping(ptr.cast(), old_size);
-                                self.pages.free_buffer(ptr.cast(), old_layout);
+                                
+                                Pages::free_buffer(ptr.cast(), old_layout);
                             }
                         }
 
@@ -1145,7 +1149,7 @@ impl Drop for Heap {
         for object in state.large.drain() {
             // SAFETY: objects of the heap are valid until it's dropped. Pages
             // are freed after them (with their objects).
-            unsafe { free_large(&mut state.pages, object) };
+            unsafe { free_large(object) };
         }
 
         for layout in state.layouts.drain(..) {

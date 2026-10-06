@@ -228,7 +228,7 @@ impl<M: Module> CompilerInner<M> {
         if let Err(error) = self.codegen.module.define_function(id, ctx) {
             return Err(match error {
                 ModuleError::Compilation(error) => CompileError::Codegen(pretty_error(&ctx.func, error)),
-                error => CompileError::Module(error),
+                error => CompileError::Module(Box::new(error)),
             });
         }
 
@@ -339,7 +339,7 @@ impl<M: Module> CompilerInner<M> {
     /// # Errors
     ///
     /// Returns an error if the data can't be defined.
-    pub fn string_object(&mut self, value: &str) -> ModuleResult<DataId> {
+    pub fn string_object(&mut self, value: &str) -> Result<DataId, Box<ModuleError>> {
         if let Some(&id) = self.strings.get(value) {
             return Ok(id);
         }
@@ -562,6 +562,11 @@ impl CompilerInner {
 
     /// The state of programs compiled by this compiler. Compiled code must be
     /// finalized (it is after a program is compiled).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the data of the state isn't finalized yet (before the first
+    /// program is compiled).
     pub fn vm_state(&self) -> NonNull<VmState> {
         let (state, _) = self.codegen.module.get_finalized_data(self.vm_state_data);
 
@@ -629,6 +634,10 @@ impl CompilerInner {
     /// through values of the program, like vtables of trait objects) must not
     /// be called after the compiler is dropped: its code, data and heap are
     /// freed then.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` isn't the size of a pointer.
     pub unsafe fn get_func<T>(&self, name: impl AsRef<str>) -> Option<T> {
         assert_eq!(mem::size_of::<T>(), mem::size_of::<*const u8>());
 
@@ -657,6 +666,10 @@ impl CompilerInner {
     ///
     /// `T` must be a `#[repr(C)]` struct of `extern "C" fn` pointers matching
     /// the trait's functions.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` doesn't have one pointer per function of the trait.
     pub unsafe fn get_vtable_ptr<T: Copy>(&self, hash: u64, trait_ref: TraitRef) -> Option<T> {
         let vtable = *self.trait_to_vtable.get(&(hash, trait_ref))?;
         let (vtable_ptr, vtable_size) = self.codegen.module.get_finalized_data(vtable);
@@ -732,11 +745,11 @@ impl<ML: ModuleLoader> FuncCompiler<'_, ML, JITModule> {
             return Err(CompileError::Internal(String::from("the compiler failed before, create a new one")));
         }
 
-        let params = params.into_iter().map(|(name, ty)| (name.into(), ty)).collect();
+        let params = params.into_iter().map(|(name, ty)| (name.into(), ty)).collect::<Vec<_>>();
         // A bug in the compiler must not take the host down with it: the panic
         // becomes an error, and the compiler (whose state may be inconsistent)
         // refuses to compile anything else.
-        let result = panic::catch_unwind(AssertUnwindSafe(|| self.compile_program(name, params, returns, text))).unwrap_or_else(|payload| {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| self.compile_program(name, &params, returns, text))).unwrap_or_else(|payload| {
             let message = payload
                 .downcast_ref::<&str>()
                 .map(|message| (*message).to_owned())
@@ -757,9 +770,9 @@ impl<ML: ModuleLoader> FuncCompiler<'_, ML, JITModule> {
         result
     }
 
-    fn compile_program(&mut self, name: &str, params: Vec<(String, TypeRef)>, returns: Option<TypeRef>, text: &str) -> CompileResult<FuncId> {
+    fn compile_program(&mut self, name: &str, params: &[(String, TypeRef)], returns: Option<TypeRef>, text: &str) -> CompileResult<FuncId> {
         let returns = returns.unwrap_or(self.type_context.tcx.types.core_types.void);
-        let (ast, block) = self.type_context.process(&mut *self.module_loader, text, params.clone(), returns);
+        let (ast, block) = self.type_context.process(&mut *self.module_loader, text, params.to_vec(), returns);
 
         if !self.type_context.diagnostics.is_empty() {
             return Err(CompileError::Type(mem::take(&mut self.type_context.diagnostics.errors).into_values().collect()));
@@ -852,9 +865,9 @@ impl<M: Module> CompileTypedAST<M, MolValue> for StmtRef {
         match &ast[self] {
             &Stmt::Expr(expr) => expr.compile(ast, compiler),
             Stmt::NewVar { name, value, .. } => {
-                let compiled = value.compile(ast, compiler)?;
+                let compiled_value = value.compile(ast, compiler)?;
 
-                compiler.declare(name.clone(), ast[*value].ty, compiled)?;
+                compiler.declare(name.clone(), ast[*value].ty, compiled_value)?;
 
                 Ok(MolValue::Nothing)
             }

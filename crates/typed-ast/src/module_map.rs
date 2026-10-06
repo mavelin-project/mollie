@@ -60,7 +60,7 @@ impl ParsedModule {
         }
 
         let (stmts, final_stmt) =
-            mollie_parser::parse_statements_until(&mut mollie_parser::Parser::new(mollie_lexer::Lexer::lex(source)), &mollie_lexer::Token::EOF)?;
+            mollie_parser::parse_statements_until(&mut mollie_parser::Parser::new(&mut mollie_lexer::Lexer::lex(source)), &mollie_lexer::Token::EOF)?;
 
         Ok(Self {
             stmts,
@@ -1533,6 +1533,14 @@ fn evaluate_value(
 /// Resolves the trait, target type and function signatures of an impl block,
 /// and registers it.
 fn process_impl_signature(context: &mut TypedASTContextRef<'_>, id: ModuleId, span: Span, implementation: &mollie_parser::Impl) -> Option<ImplInfo> {
+    /// A function of the impl: written in it, or the default of a trait
+    /// function.
+    #[derive(PartialEq, Eq)]
+    enum Slot {
+        Written(usize),
+        Default(TraitFuncRef, FuncRef),
+    }
+
     let trait_span = implementation.trait_name.as_ref().map_or(span, |trait_name| trait_name.span);
 
     let origin_trait = match &implementation.trait_name {
@@ -1595,14 +1603,6 @@ fn process_impl_signature(context: &mut TypedASTContextRef<'_>, id: ModuleId, sp
     };
 
     let functions = &implementation.functions.value;
-
-    /// A function of the impl: written in it, or the default of a trait
-    /// function.
-    #[derive(PartialEq, Eq)]
-    enum Slot {
-        Written(usize),
-        Default(TraitFuncRef, FuncRef),
-    }
 
     // Functions of a trait go first and in the trait's order, since trait
     // objects call them by index.
@@ -2069,7 +2069,7 @@ struct World {}";
 
             fn load(&mut self, _: &mut DefRegistry, _: ModuleId) -> Result<ParsedModule, Self::Error> {
                 let (stmts, final_stmt) = mollie_parser::parse_statements_until(
-                    &mut mollie_parser::Parser::new(mollie_lexer::Lexer::lex(HELLO_MOL_SOURCE)),
+                    &mut mollie_parser::Parser::new(&mut mollie_lexer::Lexer::lex(HELLO_MOL_SOURCE)),
                     &mollie_lexer::Token::EOF,
                 )
                 .unwrap();

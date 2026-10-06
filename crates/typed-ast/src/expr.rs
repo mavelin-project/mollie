@@ -3334,7 +3334,8 @@ impl IntoConstVal for ExprRef {
             Expr::Var(name) => const_context.search_var(name).ok_or(())?.clone(),
             Expr::While { condition, block, .. } => {
                 while condition.into_const_val(ast, type_context, const_context)? == ConstantValue::Bool(true) {
-                    const_context.step()?;
+                    const_context.step().ok_or(())?;
+
                     block.into_const_val(ast, type_context, const_context)?;
                 }
 

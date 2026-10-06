@@ -1,4 +1,5 @@
 //! Tests of the type solver, the definition and impl registries.
+#![allow(clippy::missing_panics_doc)]
 
 mod diagnostics;
 mod generics;

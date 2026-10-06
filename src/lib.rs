@@ -123,6 +123,7 @@ impl<T> GcPtr<T> {
         self.0.cast()
     }
 
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn type_layout(&self) -> &'static TypeLayout {
         unsafe { (*self.0.cast::<u8>().wrapping_sub(HEADER_SIZE).cast::<GcValue<()>>()).layout }
     }
@@ -137,6 +138,13 @@ impl<T> GcPtr<T> {
         }
     }
 
+    /// The field `field` of this object (of the ADT `adt`), as an `F`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the object isn't a value of `adt`, or `F` doesn't have the
+    /// size of the field.
+    #[allow(clippy::cast_sign_loss)]
     pub fn get<F>(&self, adt: &CompiledAdt, field: FieldRef) -> Option<&F> {
         assert_eq!(self.type_layout(), adt.type_layout);
 
@@ -147,6 +155,13 @@ impl<T> GcPtr<T> {
         unsafe { self.0.byte_add(field.offset as usize).cast::<F>().as_ref() }
     }
 
+    /// Like [`GcPtr::get`], mutably.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the object isn't a value of `adt`, or `F` doesn't have the
+    /// size of the field.
+    #[allow(clippy::cast_sign_loss)]
     pub fn get_mut<F>(&mut self, adt: &CompiledAdt, field: FieldRef) -> Option<&mut F> {
         assert_eq!(self.type_layout(), adt.type_layout);
 
@@ -158,6 +173,7 @@ impl<T> GcPtr<T> {
     }
 
     /// Reads a field holding an array (a pointer to a GC array).
+    #[allow(clippy::cast_sign_loss)]
     fn array_field(&self, adt: &CompiledAdt, field: FieldRef) -> Option<*mut Array> {
         assert_eq!(self.type_layout(), adt.type_layout);
 
@@ -235,7 +251,7 @@ impl MolStr {
         self.0
     }
 
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         // SAFETY: values of `MolStr` are only created from strings.
         unsafe { compiler::strings::as_str(self.0) }
     }
@@ -484,6 +500,13 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    /// Adds the field `name` of type `T` with the value `default` when it's
+    /// omitted, to the last variant.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` is a generic parameter the builder doesn't have (see
+    /// [`AdtBuilder::add_generic`]).
     #[must_use]
     pub fn field_default<T: MollieTypeOf + Into<ConstantValue>>(mut self, name: impl Into<String>, default: T) -> Self {
         if let Some(index) = T::generic_index() {
@@ -497,6 +520,12 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    /// Adds the field `name` of type `T` to the last variant.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` is a generic parameter the builder doesn't have (see
+    /// [`AdtBuilder::add_generic`]).
     #[must_use]
     pub fn field<T: MollieTypeOf>(mut self, name: impl Into<String>) -> Self {
         if let Some(index) = T::generic_index() {
@@ -519,6 +548,11 @@ impl<'a> AdtBuilder<'a> {
         self
     }
 
+    /// Registers the ADT in `module`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an item with the same name already exists in the module.
     pub fn finish_in_module(self, module: ModuleId) -> AdtRef {
         let adt = Adt {
             name: self.name,
@@ -611,12 +645,18 @@ impl<'a> TraitBuilder<'a> {
         self
     }
 
+    #[must_use]
     pub const fn add_generic(mut self) -> Self {
         self.generics += 1;
 
         self
     }
 
+    /// Registers the trait in `module`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an item with the same name already exists in the module.
     pub fn finish_in_module(self, module: ModuleId) -> TraitRef {
         let r#trait = Trait {
             name: self.name,

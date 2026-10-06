@@ -18,6 +18,11 @@ use crate::{
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `target is pattern`, which binds variables of the pattern in
     /// the current scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_is_pattern(&mut self, ast: &TypedAST, target: ExprRef, pattern: &IsPattern<SolvedPass>) -> CompileResult<MolValue> {
         let value = target.compile(ast, self)?;
 

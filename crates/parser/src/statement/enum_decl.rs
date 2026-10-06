@@ -46,6 +46,11 @@ pub struct EnumDecl {
 }
 
 impl EnumDecl {
+    /// Parses an enum declaration (after its attributes).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tokens don't form one.
     pub fn parse(parser: &mut Parser, attributes: Vec<Positioned<Attribute>>) -> ParseResult<Positioned<Self>> {
         parser.consume(&Token::Enum)?;
 

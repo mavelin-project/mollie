@@ -36,6 +36,10 @@ pub fn resolve(tcx: &TyCtxt, ty: TypeRef, generics: &[TypeRef]) -> TypeRef {
 /// - `any` is a pointer and a metadata pointer, like trait objects.
 /// - Values of value types are their bytes, in the layout compiled into `adts`
 ///   (they're compiled before code using them).
+///
+/// # Errors
+///
+/// Returns an error if a value type in `ty` wasn't compiled into `adts`.
 pub fn ir_type(tcx: &TyCtxt, adts: &AdtLayouts, ty: TypeRef, generics: &[TypeRef], isa: &dyn TargetIsa) -> CompileResult<Option<MollieType>> {
     let ptr = isa.pointer_type();
 
@@ -164,6 +168,11 @@ pub fn is_concrete(tcx: &TyCtxt, ty: TypeRef) -> bool {
 /// Signature of a function of type `func_ty`. Function values (closures and
 /// functions used as values) take their environment as an extra last
 /// argument.
+///
+/// # Errors
+///
+/// Returns an error if `func_ty` isn't a function type, or a value type in it
+/// wasn't compiled.
 pub fn signature(
     tcx: &TyCtxt,
     adts: &AdtLayouts,

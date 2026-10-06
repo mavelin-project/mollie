@@ -10,7 +10,7 @@ pub enum CompileError {
     /// The program has type errors.
     Type(Vec<Diagnostic>),
     /// Declaring or defining a function or data failed.
-    Module(ModuleError),
+    Module(Box<ModuleError>),
     /// Cranelift rejected a generated function (a bug in the compiler).
     Codegen(String),
     /// The program uses something the compiler doesn't support yet.
@@ -101,6 +101,12 @@ impl Error for CompileError {}
 
 impl From<ModuleError> for CompileError {
     fn from(error: ModuleError) -> Self {
+        Self::Module(Box::new(error))
+    }
+}
+
+impl From<Box<ModuleError>> for CompileError {
+    fn from(error: Box<ModuleError>) -> Self {
         Self::Module(error)
     }
 }

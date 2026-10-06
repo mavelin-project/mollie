@@ -6,7 +6,7 @@ use std::{fmt, mem::ManuallyDrop};
 use cranelift::{
     codegen::ir,
     jit::{JITBuilder, JITModule},
-    module::{DataDescription, DataId, Module, ModuleResult, default_libcall_names},
+    module::{DataDescription, DataId, Module, ModuleError, default_libcall_names},
     native,
     prelude::settings,
 };
@@ -86,7 +86,7 @@ impl<M: Module> CodeGenerator<M> {
     /// # Errors
     ///
     /// Returns an error if the data can't be declared or defined.
-    pub fn static_data<T: Into<Box<[u8]>>>(&mut self, data: T) -> ModuleResult<DataId> {
+    pub fn static_data<T: Into<Box<[u8]>>>(&mut self, data: T) -> Result<DataId, Box<ModuleError>> {
         self.data_desc.define(data.into());
 
         let id = self.module.declare_anonymous_data(false, false)?;
@@ -94,7 +94,7 @@ impl<M: Module> CodeGenerator<M> {
 
         self.data_desc.clear();
 
-        result.map(|()| id)
+        Ok(result.map(|()| id)?)
     }
 
     /// Defines writable zeroed data of the given size.
@@ -102,7 +102,7 @@ impl<M: Module> CodeGenerator<M> {
     /// # Errors
     ///
     /// Returns an error if the data can't be declared or defined.
-    pub fn static_zeroed(&mut self, size: usize) -> ModuleResult<DataId> {
+    pub fn static_zeroed(&mut self, size: usize) -> Result<DataId, Box<ModuleError>> {
         self.data_desc.define_zeroinit(size);
 
         let id = self.module.declare_anonymous_data(true, false)?;
@@ -110,7 +110,7 @@ impl<M: Module> CodeGenerator<M> {
 
         self.data_desc.clear();
 
-        result.map(|()| id)
+        Ok(result.map(|()| id)?)
     }
 }
 

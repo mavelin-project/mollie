@@ -17,15 +17,15 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Diagnostic {
-    pub error: TypeError,
+    pub error: Box<TypeError>,
     pub primary_span: Option<ModuleSpan>,
     pub secondary_span: Option<ModuleSpan>,
 }
 
 impl Diagnostic {
-    pub const fn new(error: TypeError) -> Self {
+    pub fn new(error: TypeError) -> Self {
         Self {
-            error,
+            error: Box::new(error),
             primary_span: None,
             secondary_span: None,
         }
@@ -47,7 +47,7 @@ impl Diagnostic {
 
     /// The headline of the diagnostic.
     pub fn message(&self, tcx: &TyCtxt) -> String {
-        match &self.error {
+        match &*self.error {
             TypeError::Unexpected { expected, found } => match (expected, found) {
                 (TypeErrorValue::Nothing, TypeErrorValue::Nothing) => String::from("unexpected value"),
                 (TypeErrorValue::Nothing, found) => format!("unexpected {}", found.display(tcx)),
@@ -113,7 +113,7 @@ impl Diagnostic {
     /// Labels of the primary and secondary spans, for the spans that are
     /// known.
     pub fn labels(&self, tcx: &TyCtxt) -> Vec<(ModuleSpan, String)> {
-        let primary = match &self.error {
+        let primary = match &*self.error {
             TypeError::Unexpected { found, .. } => match found {
                 TypeErrorValue::Nothing => String::new(),
                 found => format!("found {}", found.display(tcx)),
@@ -168,7 +168,13 @@ impl Diagnostic {
             TypeError::MissingTraitFunc { name, .. } => format!("`{name}` is not implemented here"),
             TypeError::NotTraitMember { .. } => String::from("defined here"),
             TypeError::NotIterable { .. } => String::from("this value doesn't implement the iterable trait"),
-            TypeError::InvalidUnaryOperator { .. } | TypeError::InvalidOperator { .. } => String::from("used here"),
+            TypeError::InvalidUnaryOperator { .. }
+            | TypeError::InvalidOperator { .. }
+            | TypeError::ConstCycle { .. }
+            | TypeError::UnknownLabel { .. }
+            | TypeError::NoDefault { .. }
+            | TypeError::UnknownArgument { .. }
+            | TypeError::DuplicateArgument { .. } => String::from("used here"),
             TypeError::Parse { message } => message.clone(),
             TypeError::LocalDeclaration => String::from("move this declaration out of the block"),
             TypeError::TopLevelCode => String::from("move this into a function"),
@@ -187,11 +193,6 @@ impl Diagnostic {
             TypeError::UnknownVariant { name } => format!("write it with its enum, like `Shape::{name}`, or use a lowercase name to bind the value"),
             TypeError::InstantiationLimit => String::from("a generic function here calls itself with ever larger types, or there are too many instances"),
             TypeError::Unavailable { .. } => String::from("the host doesn't allow this addon to use it"),
-            TypeError::ConstCycle { .. }
-            | TypeError::UnknownLabel { .. }
-            | TypeError::NoDefault { .. }
-            | TypeError::UnknownArgument { .. }
-            | TypeError::DuplicateArgument { .. } => String::from("used here"),
             TypeError::BreakValueOutsideLoop => String::from("`while` and `for` may end without `break`, use `loop` instead"),
             TypeError::UnsatisfiedBound { .. } => String::from("required by a bound of this generic parameter"),
             TypeError::SuperOutsideTraitImpl => String::from("only overrides of trait functions can call their defaults"),
@@ -205,7 +206,7 @@ impl Diagnostic {
             TypeError::InvalidMutSelf => String::from("other functions take `self` by reference already"),
         };
 
-        let secondary = match &self.error {
+        let secondary = match &*self.error {
             TypeError::AlreadyExists { primary, secondary, .. } => String::from(match secondary {
                 DefinitionType::Local if *primary == DefinitionType::Local => "and also declared here",
                 DefinitionType::Local => "and declared here",

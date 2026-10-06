@@ -104,9 +104,9 @@ fn unresolved_unknown_solves_to_error() {
     let mut solver = TypeSolver::from_context(&mut tcx, &mut diagnostics);
 
     let unknown = solver.add_unknown(None, None);
-    let solved = solver.solve(unknown);
+    let solved_type = solver.solve(unknown);
 
-    assert_eq!(solver.context.types[solved], Type::Error);
+    assert_eq!(solver.context.types[solved_type], Type::Error);
 }
 
 #[test]
@@ -144,9 +144,9 @@ fn occurs_check_rejects_infinite_types() {
     ));
 
     // The variable stays unbound, so solving it terminates.
-    let solved = solver.solve(element);
+    let solved_type = solver.solve(element);
 
-    assert_eq!(solver.context.types[solved], Type::Error);
+    assert_eq!(solver.context.types[solved_type], Type::Error);
 }
 
 #[test]
@@ -179,9 +179,9 @@ fn unsized_array_accepts_sized_array() {
 
     assert!(solver.unify(UnifyArgs { expected, found }).is_ok());
 
-    let solved = solver.solve(found);
+    let solved_type = solver.solve(found);
 
-    assert!(matches!(solver.context.types[solved], Type::Array(_, None)));
+    assert!(matches!(solver.context.types[solved_type], Type::Array(_, None)));
 }
 
 #[test]

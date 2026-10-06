@@ -136,7 +136,7 @@ fn duplicate_names_are_reported() {
         Span::default(),
     );
 
-    assert!(matches!(duplicate, Err(diagnostic) if matches!(diagnostic.error, TypeError::AlreadyExists { ref name, .. } if name == "Thing")));
+    assert!(matches!(duplicate, Err(diagnostic) if matches!(&*diagnostic.error, TypeError::AlreadyExists { name, .. } if name == "Thing")));
 }
 
 #[test]
@@ -218,5 +218,5 @@ fn diagnostics_are_collected() {
     let error = diagnostics.error(TypeError::NotAssignable, ModuleSpan(ModuleId::ZERO, Span::default()));
 
     assert!(!diagnostics.is_empty());
-    assert!(matches!(diagnostics.errors[error].error, TypeError::NotAssignable));
+    assert!(matches!(&*diagnostics.errors[error].error, TypeError::NotAssignable));
 }

@@ -1055,7 +1055,7 @@ impl<ML: ModuleLoader> FuncCompiler<'_, ML, JITModule> {
                     Some(&FunctionBody::BuiltIn("string_slice")) => compile_string_slice(&mut compiler),
                     Some(&FunctionBody::BuiltIn("array_truncate")) => compile_array_truncate(&mut compiler),
                     Some(&FunctionBody::BuiltIn(name @ ("f32_sqrt" | "f32_floor" | "f32_ceil" | "f32_trunc" | "f32_abs"))) => {
-                        compile_float_op(&mut compiler, name)
+                        compile_float_op(&mut compiler, name);
                     }
                     Some(&FunctionBody::BuiltIn(name)) if compiler.compiler.builtins.contains_key(name) => compile_runtime_builtin(&mut compiler, name),
                     Some(&FunctionBody::BuiltIn(name)) => return Err(CompileError::unsupported(format!("unknown built-in function `{name}`"))),

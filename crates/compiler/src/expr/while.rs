@@ -21,6 +21,11 @@ pub struct LoopTarget {
 
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles `while condition { block }`, which produces no value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_while(&mut self, ast: &TypedAST, id: LoopId, condition: ExprRef, block: BlockRef) -> CompileResult<MolValue> {
         let header_block = self.fn_builder.create_block();
         let body_block = self.fn_builder.create_block();
@@ -64,6 +69,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles `loop { block }`, whose value is given by `break`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_loop(&mut self, ast: &TypedAST, expr: ExprRef, id: LoopId, block: BlockRef) -> CompileResult<MolValue> {
         let ty = ast[expr].ty;
         let result_type = self.ir_type(ty)?;
@@ -120,6 +130,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
 
     /// Compiles `break`, producing a value of `ty` for the code after it,
     /// which is never reached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the loop isn't being compiled, or the value can't be
+    /// compiled.
     pub fn compile_break(&mut self, ast: &TypedAST, id: LoopId, value: Option<ExprRef>, ty: TypeRef) -> CompileResult<MolValue> {
         let (after, loop_ty) = {
             let target = self.loop_target(id)?;
@@ -145,6 +160,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
 
     /// Compiles `continue`, producing a value of `ty` for the code after it,
     /// which is never reached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the loop isn't being compiled, or `ty` has no
+    /// representation.
     pub fn compile_continue(&mut self, id: LoopId, ty: TypeRef) -> CompileResult<MolValue> {
         let latch = self.loop_target(id)?.latch;
 

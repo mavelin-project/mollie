@@ -154,6 +154,13 @@ impl<'a> TypeSolver<'a> {
         }
     }
 
+    /// Makes the types `args.expected` and `args.found` the same, binding
+    /// unknown types.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the types can't be the same (like `i32` and
+    /// `string`), or if a type would contain itself.
     #[must_use = "callers must check for unification error"]
     pub fn unify(&mut self, args: UnifyArgs) -> Result<(), UnifyError> {
         let expected = self.get_info(args.expected);

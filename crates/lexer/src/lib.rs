@@ -828,6 +828,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::literal_string_with_formatting_args)]
     fn format_specifiers_of_templates() {
         let spec_of = |source: &str| {
             let [Token::Template(parts), Token::EOF] = <[Token; 2]>::try_from(values(source)).unwrap() else {

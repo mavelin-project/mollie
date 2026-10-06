@@ -592,6 +592,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::literal_string_with_formatting_args)]
     fn formatting_is_stable() {
         for source in [
             "a + b * c",

@@ -19,6 +19,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiles a closure into a function value: a pointer to its code and a
     /// pointer to its environment (copies of the captured variables), or null
     /// if it captures nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_closure(
         &mut self,
         ast: &TypedAST,

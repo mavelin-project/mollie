@@ -77,7 +77,7 @@ fn programs_can_opt_out_of_std() {
     assert!(
         errors
             .iter()
-            .any(|error| matches!(error, TypeError::NotFound { name, was_looking_for: LookupType::Type { .. } } if name == "Option")),
+            .any(|error| matches!(&**error, TypeError::NotFound { name, was_looking_for: LookupType::Type { .. } } if name == "Option")),
         "{errors:?}"
     );
 }

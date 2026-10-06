@@ -37,6 +37,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles `${value:spec}`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if values of the type can't be formatted with `spec`.
     pub fn compile_format(&mut self, ast: &TypedAST, value: ExprRef, spec: FormatSpec) -> CompileResult<MolValue> {
         let compiled = value.compile(ast, self)?.value()?;
         let Type::Primitive(primitive) = self.types()[self.resolve(ast[value].ty)] else {
@@ -67,6 +71,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles `expr as primitive`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value can't be cast to `to`.
     pub fn compile_cast(&mut self, ast: &TypedAST, expr: ExprRef, to: PrimitiveType) -> CompileResult<MolValue> {
         let value = expr.compile(ast, self)?;
         let Type::Primitive(from) = self.types()[self.resolve(ast[expr].ty)] else {

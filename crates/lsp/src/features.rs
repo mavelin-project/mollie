@@ -398,7 +398,7 @@ pub fn completion(
             .diagnostics
             .errors
             .values()
-            .any(|diagnostic| matches!(diagnostic.error, mollie_typing::TypeError::Parse { .. }));
+            .any(|diagnostic| matches!(&*diagnostic.error, mollie_typing::TypeError::Parse { .. }));
 
         analysis = Some(current);
 

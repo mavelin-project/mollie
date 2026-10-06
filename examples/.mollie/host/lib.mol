@@ -1,0 +1,14 @@
+extern func println_str(text: string);
+extern func println_bool(value: bool);
+module system;
+module graphics;
+extern struct DrawContext {}
+extern trait Drawable {
+    func measure(self, size: graphics::Size, draw_context: DrawContext) -> graphics::Size;
+    func render(self, origin: graphics::Point, size: graphics::Size, draw_context: DrawContext);
+}
+impl DrawContext {
+    extern func draw_rect(self, x: f32, y: f32, width: f32, height: f32, corner_radius: graphics::CornerRadius, color: graphics::Color);
+    extern func draw_image(self, x: f32, y: f32, width: f32, height: f32, image: graphics::Image);
+    extern func image_size(self, image: graphics::Image) -> graphics::Size;
+}

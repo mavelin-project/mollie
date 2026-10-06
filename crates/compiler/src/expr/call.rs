@@ -17,6 +17,10 @@ use crate::{
 
 impl<M: Module> FunctionCompiler<'_, M> {
     /// Compiled instance of a function with type arguments `type_args`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this instance wasn't compiled.
     pub fn func_id(&self, func: FuncRef, type_args: &[TypeRef]) -> CompileResult<FuncId> {
         let hash = types::instance_hash(&self.type_context.tcx, type_args, &self.generics);
 
@@ -30,6 +34,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
 
     /// Compiled function of an impl block for `target_ty`. Functions with
     /// their own generics are compiled for each of their `type_args`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this function of the impl wasn't compiled.
     pub fn vfunc_id(&self, target_ty: TypeRef, vtable: ImplRef, func: VFuncRef, type_args: &[TypeRef]) -> CompileResult<FuncId> {
         let hash = self.hash(target_ty);
         let compiled = if self.type_context.tcx.impl_registry.impls[vtable].functions[func].generics == 0 {
@@ -100,6 +108,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Compiles `func(args...)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn compile_call(&mut self, ast: &TypedAST, _expr: ExprRef, func: ExprRef, args: &[ExprRef]) -> CompileResult<MolValue> {
         let func_ty = ast[func].ty;
         let Type::Func(params, returns) = self.types()[self.resolve(func_ty)].clone() else {

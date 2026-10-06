@@ -1,0 +1,536 @@
+warning: first doc comment paragraph is too long
+  --> crates/shared/src/limits.rs:14:1
+   |
+14 | / /// Size (in nodes of the type, like `Pair` and its arguments) of type
+15 | | /// arguments of a generic instance. It bounds instantiations of generic
+16 | | /// functions calling themselves with bigger types (`f<T>` calling `f<T[]>`,
+17 | | /// or `f<Pair<T, T>>`, which grows exponentially).
+   | |_^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#too_long_first_doc_paragraph
+   = note: `-W clippy::too-long-first-doc-paragraph` implied by `-W clippy::nursery`
+   = help: to override `-W clippy::nursery` add `#[allow(clippy::too_long_first_doc_paragraph)]`
+
+warning: first doc comment paragraph is too long
+  --> crates/shared/src/limits.rs:36:1
+   |
+36 | / /// Runs `f`, a recursive step over the code (parsing, type checking or
+37 | | /// compiling a nested expression), on a bigger stack if the current one runs
+38 | | /// low. Together with [`MAX_NESTING`], the compiler can't overflow the stack,
+39 | | /// whatever thread it runs on.
+   | |_^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#too_long_first_doc_paragraph
+
+warning: `mollie-shared` (lib) generated 2 warnings
+warning: these match arms have identical bodies
+   --> crates/typing/src/diagnostic.rs:171:13
+    |
+171 |               TypeError::InvalidUnaryOperator { .. } | TypeError::InvalidOperator { .. } => String::from("used here"),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+190 | /             TypeError::ConstCycle { .. }
+191 | |             | TypeError::UnknownLabel { .. }
+192 | |             | TypeError::NoDefault { .. }
+193 | |             | TypeError::UnknownArgument { .. }
+194 | |             | TypeError::DuplicateArgument { .. } => String::from("used here"),
+    | |______________________________________________________________________________^
+    |
+    = help: if this is unintentional make the arms return different values
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#match_same_arms
+    = note: `-W clippy::match-same-arms` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::match_same_arms)]`
+help: otherwise merge the patterns into a single arm
+    |
+171 ~             TypeError::InvalidUnaryOperator { .. } | TypeError::InvalidOperator { .. } | TypeError::ConstCycle { .. }
+172 +             | TypeError::UnknownLabel { .. }
+173 +             | TypeError::NoDefault { .. }
+174 +             | TypeError::UnknownArgument { .. }
+175 ~             | TypeError::DuplicateArgument { .. } => String::from("used here"),
+176 |             TypeError::Parse { message } => message.clone(),
+...
+193 |             TypeError::Unavailable { .. } => String::from("the host doesn't allow this addon to use it"),
+194 ~             TypeError::BreakValueOutsideLoop => String::from("`while` and `for` may end without `break`, use `loop` instead"),
+    |
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:693:80
+    |
+693 |     pub fn register_module<T: Into<String>>(&mut self, name: T, span: Span) -> Result<ModuleId, Diagnostic> {
+    |                                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+    = note: `-W clippy::result-large-err` implied by `-W clippy::all`
+    = help: to override `-W clippy::all` add `#[allow(clippy::result_large_err)]`
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:703:108
+    |
+703 | ...leId, name: T, span: Span) -> Result<ModuleId, Diagnostic> {
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:737:60
+    |
+737 |     pub fn register_adt(&mut self, ty: Adt, span: Span) -> Result<AdtRef, Diagnostic> {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:747:88
+    |
+747 |     pub fn register_adt_in_module(&mut self, module: ModuleId, ty: Adt, span: Span) -> Result<AdtRef, Diagnostic> {
+    |                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:779:69
+    |
+779 |     pub fn register_trait(&mut self, r#trait: Trait, span: Span) -> Result<TraitRef, Diagnostic> {
+    |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:789:97
+    |
+789 |     pub fn register_trait_in_module(&mut self, module: ModuleId, r#trait: Trait, span: Span) -> Result<TraitRef, Diagnostic> {
+    |                                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:816:98
+    |
+816 |     pub fn register_const_in_module(&mut self, module: ModuleId, constant: Const, span: Span) -> Result<ConstRef, Diagnostic> {
+    |                                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: the `Err`-variant returned from this function is very large
+   --> crates/typing/src/type_context.rs:843:92
+    |
+843 |     pub fn register_func_in_module(&mut self, module: ModuleId, func: Func, span: Span) -> Result<FuncRef, Diagnostic> {
+    |                                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `Err`-variant is at least 144 bytes
+    |
+    = help: try reducing the size of `diagnostic::Diagnostic`, for example by boxing large elements or replacing it with `Box<diagnostic::Diagnostic>`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#result_large_err
+
+warning: `mollie-typing` (lib) generated 9 warnings
+crates/parser/src/statement/expression/template.rs:7:1: warning: large size difference between variants: the entire enum is at least 280 bytes
+crates/parser/src/statement/expression/mod.rs:109:57: warning: this argument is passed by value, but not consumed in the function body
+crates/parser/src/lib.rs:148:5: warning: struct `Parser` has a public `len` method, but the `is_empty` method has an unexpected signature
+warning: `mollie-parser` (lib) generated 3 warnings
+crates/ir/src/lib.rs:89:67: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+crates/ir/src/lib.rs:105:53: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+warning: `mollie-ir` (lib) generated 2 warnings
+crates/typed-ast/src/builtins.rs:83:9: warning: binding's name is too similar to existing binding
+crates/typed-ast/src/expr.rs:108:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/expr.rs:1913:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/expr.rs:3001:37: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/module_map.rs:53:21: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/module_map.rs:340:111: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 144 bytes
+crates/typed-ast/src/module_map.rs:1602:5: warning: adding items after statements is confusing, since items exist from the start of the scope
+crates/typed-ast/src/std_lib.rs:30:5: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/ty.rs:335:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/ty.rs:502:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/lib.rs:322:73: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/lib.rs:427:5: warning: this function has too many arguments (9/7)
+crates/typed-ast/src/lib.rs:439:9: warning: consider adding a `;` to the last statement for consistent formatting
+crates/typed-ast/src/lib.rs:439:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/lib.rs:744:9: warning: consider bringing this path into scope with the `use` keyword
+crates/typed-ast/src/lib.rs:1883:5: warning: this returns a `Result<_, ()>`
+warning: `mollie-typed-ast` (lib) generated 16 warnings (run `cargo clippy --fix --lib -p mollie-typed-ast -- ` to apply 1 suggestion)
+crates/compiler/src/lib.rs:868:21: warning: binding's name is too similar to existing binding
+crates/compiler/src/allocator/pages.rs:128:22: warning: consider bringing this path into scope with the `use` keyword
+crates/compiler/src/allocator/pages.rs:128:46: warning: consider bringing this path into scope with the `use` keyword
+crates/compiler/src/allocator/pages.rs:158:33: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::pages::Page`) (1 < 8 bytes)
+crates/compiler/src/allocator/pages.rs:243:31: warning: unused `self` argument
+crates/compiler/src/allocator/pages.rs:337:48: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<allocator::Array>`) (1 < 8 bytes)
+crates/compiler/src/allocator/pages.rs:416:44: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<allocator::Array>`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:125:1: warning: first doc comment paragraph is too long
+crates/compiler/src/allocator.rs:526:40: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::Array`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:536:49: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut usize`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:597:40: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<()>`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:605:29: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<()>`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:751:22: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<allocator::Array>`) (1 < 8 bytes)
+crates/compiler/src/allocator.rs:782:22: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut allocator::GcValue<allocator::Array>`) (1 < 8 bytes)
+crates/compiler/src/expr/pattern.rs:36:9: warning: consider bringing this path into scope with the `use` keyword
+crates/compiler/src/expr/mod.rs:14:17: warning: consider bringing this path into scope with the `use` keyword
+crates/compiler/src/expr/mod.rs:52:5: warning: consider bringing this path into scope with the `use` keyword
+crates/compiler/src/func.rs:29:47: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/func.rs:29:47: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/func.rs:359:58: warning: casting `usize` to `u32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/func.rs:369:62: warning: casting `usize` to `u32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/items.rs:1058:25: warning: consider adding a `;` to the last statement for consistent formatting: help: add a `;` here: `compile_float_op(&mut compiler, name);`
+crates/compiler/src/math.rs:1:1: warning: first doc comment paragraph is too long
+crates/compiler/src/math.rs:189:20: warning: strict comparison of `f32` or `f64`: help: consider comparing them within some margin of error: `(x - 1.0).abs() < error_margin`
+crates/compiler/src/sandbox.rs:60:37: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:60:37: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:61:37: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:61:37: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:62:44: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:62:44: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:63:37: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:63:37: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:64:38: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:64:38: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:65:42: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:65:42: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:66:38: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:66:38: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:67:42: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:67:42: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/sandbox.rs:68:38: warning: casting `usize` to `i32` may truncate the value on targets with 64-bit wide pointers
+crates/compiler/src/sandbox.rs:68:38: warning: casting `usize` to `i32` may wrap around the value on targets with 32-bit wide pointers
+crates/compiler/src/lib.rs:773:55: warning: this argument is passed by value, but not consumed in the function body
+crates/compiler/src/allocator/pages.rs:279:22: warning: this parameter is a mutable reference but is not used mutably
+warning: `mollie-compiler` (lib) generated 44 warnings (run `cargo clippy --fix --lib -p mollie-compiler -- ` to apply 1 suggestion)
+src/host.rs:140:91: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:406:1: warning: first doc comment paragraph is too long
+src/host.rs:449:1: warning: first doc comment paragraph is too long
+src/host.rs:1087:9: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1150:13: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1180:15: warning: very complex type used. Consider factoring parts into `type` definitions
+src/host.rs:1249:13: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1328:21: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1409:124: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1427:10: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1435:84: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1453:72: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1472:6: warning: the `Err`-variant returned from this function is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1500:18: warning: the `Err`-variant returned from this closure is very large: the `Err`-variant is at least 136 bytes
+src/host.rs:1524:9: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1539:17: warning: consider bringing this path into scope with the `use` keyword
+src/host.rs:1639:1: warning: first doc comment paragraph is too long
+src/host.rs:1674:17: warning: consider bringing this path into scope with the `use` keyword
+src/lib.rs:127:20: warning: casting from `*mut u8` to a more-strictly-aligned pointer (`*mut mollie_compiler::allocator::GcValue<()>`) (1 < 8 bytes)
+src/lib.rs:153:34: warning: casting `i32` to `usize` may lose the sign of the value
+src/lib.rs:169:34: warning: casting `i32` to `usize` may lose the sign of the value
+src/lib.rs:180:46: warning: casting `i32` to `usize` may lose the sign of the value
+src/lib.rs:188:23: warning: consider bringing this path into scope with the `use` keyword
+src/lib.rs:194:23: warning: consider bringing this path into scope with the `use` keyword
+src/lib.rs:243:14: warning: consider bringing this path into scope with the `use` keyword
+src/lib.rs:252:18: warning: consider bringing this path into scope with the `use` keyword
+warning: `mollie` (lib) generated 26 warnings
+warning: enum with no variants
+  --> examples/ui.rs:93:1
+   |
+93 | pub enum DrawableTrait {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider using the uninhabited type `!` (never type) or a wrapper around it to introduce a type which can't be instantiated
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#empty_enums
+   = note: `-W clippy::empty-enums` implied by `-W clippy::nursery`
+   = help: to override `-W clippy::nursery` add `#[allow(clippy::empty_enums)]`
+
+warning: docs for function which may panic missing `# Panics` section
+   --> examples/ui.rs:150:5
+    |
+150 |     pub fn draw_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radius: CornerRadius, color: Color) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: first possible panic found here
+   --> examples/ui.rs:174:25
+    |
+174 |             .fill_path(&path.finish().unwrap(), &paint, FillRule::Winding, Transform::identity(), None);
+    |                         ^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#missing_panics_doc
+    = note: `-W clippy::missing-panics-doc` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::missing_panics_doc)]`
+
+warning: docs for function which may panic missing `# Panics` section
+   --> examples/ui.rs:177:5
+    |
+177 |     pub fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, image: GcPtr<Image>) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: first possible panic found here
+   --> examples/ui.rs:195:24
+    |
+195 |             .fill_rect(Rect::from_xywh(x, y, width, height).unwrap(), &paint, Transform::identity(), None);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#missing_panics_doc
+
+warning: casting `u32` to `f32` may cause a loss of precision (`u32` is 32 bits wide, but `f32`'s mantissa is only 23 bits wide)
+   --> examples/ui.rs:181:27
+    |
+181 |         let image_width = image.width() as f32;
+    |                           ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#cast_precision_loss
+    = note: `-W clippy::cast-precision-loss` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::cast_precision_loss)]`
+
+warning: casting `u32` to `f32` may cause a loss of precision (`u32` is 32 bits wide, but `f32`'s mantissa is only 23 bits wide)
+   --> examples/ui.rs:182:28
+    |
+182 |         let image_height = image.height() as f32;
+    |                            ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#cast_precision_loss
+
+warning: casting `u32` to `f32` may cause a loss of precision (`u32` is 32 bits wide, but `f32`'s mantissa is only 23 bits wide)
+   --> examples/ui.rs:202:21
+    |
+202 |         let width = image.width() as f32;
+    |                     ^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#cast_precision_loss
+
+warning: casting `u32` to `f32` may cause a loss of precision (`u32` is 32 bits wide, but `f32`'s mantissa is only 23 bits wide)
+   --> examples/ui.rs:203:22
+    |
+203 |         let height = image.height() as f32;
+    |                      ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#cast_precision_loss
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> examples/ui.rs:310:42
+    |
+310 |             (path.display().to_string(), std::fs::read_to_string(&path).unwrap_or_default())
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+    = note: requested on the command line with `-W clippy::absolute-paths`
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> examples/ui.rs:332:13
+    |
+332 |             tracing_subscriber::fmt::layer()
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> examples/ui.rs:342:20
+    |
+342 |     let mut args = std::env::args();
+    |                    ^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> examples/ui.rs:434:33
+    |
+434 |                 let threshold = std::env::var("MOLLIE_GC_THRESHOLD")
+    |                                 ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: called `map(_).unwrap_or_default()` on an `Option` value
+   --> examples/ui.rs:549:34
+    |
+549 |                   let trait_name = generator
+    |  __________________________________^
+550 | |                     .origin_trait
+551 | |                     .map(|trait_ref| tcx.def_registry.traits[trait_ref].name.as_str())
+552 | |                     .unwrap_or_default();
+    | |________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#map_unwrap_or
+    = note: `-W clippy::map-unwrap-or` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::map_unwrap_or)]`
+help: use instead
+    |
+551 -                     .map(|trait_ref| tcx.def_registry.traits[trait_ref].name.as_str())
+552 -                     .unwrap_or_default();
+551 +                     .map_or_default(|trait_ref| tcx.def_registry.traits[trait_ref].name.as_str());
+    |
+
+warning: redundant clone
+  --> examples/reload.rs:31:38
+   |
+31 |             current_dir: examples_dir.clone(),
+   |                                      ^^^^^^^^ help: remove this
+   |
+note: this value is dropped without further use
+  --> examples/reload.rs:31:26
+   |
+31 |             current_dir: examples_dir.clone(),
+   |                          ^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#redundant_clone
+   = note: `-W clippy::redundant-clone` implied by `-W clippy::nursery`
+   = help: to override `-W clippy::nursery` add `#[allow(clippy::redundant_clone)]`
+
+warning: for loop on unbounded range
+  --> examples/reload.rs:45:5
+   |
+45 | /     for frame in 0.. {
+46 | |         let current = fs::metadata(&path).and_then(|metadata| metadata.modified()).ok();
+47 | |
+48 | |         if current != modified {
+...  |
+80 | |         thread::sleep(Duration::from_millis(500));
+81 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#for_unbounded_range
+   = note: `-W clippy::for-unbounded-range` implied by `-W clippy::all`
+   = help: to override `-W clippy::all` add `#[allow(clippy::for_unbounded_range)]`
+help: for loops over unbounded ranges will wrap around and may panic, consider adding an inclusive high bound
+   |
+45 |     for frame in 0..=i32::MAX {
+   |                     +++++++++
+
+warning: consider bringing this path into scope with the `use` keyword
+  --> tests/host/isolation.rs:28:18
+   |
+28 | fn compile<Args: mollie::host::ScriptArgs + 'static, R: mollie::host::ScriptValue>(compiler: &mut Compiler<()>, params: &[&str], sou...
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+   = note: requested on the command line with `-W clippy::absolute-paths`
+
+warning: consider bringing this path into scope with the `use` keyword
+  --> tests/host/isolation.rs:28:57
+   |
+28 | fn compile<Args: mollie::host::ScriptArgs + 'static, R: mollie::host::ScriptValue>(compiler: &mut Compiler<()>, params: &[&str], sou...
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+  --> tests/host/safe.rs:42:66
+   |
+42 | fn run(compiler: &mut Compiler<()>, source: &str) -> Result<i32, mollie::compiler::sandbox::Trap> {
+   |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: multiply and add expressions may be calculated more efficiently and accurately
+   --> tests/host/safe.rs:112:45
+    |
+112 |     host.function("dot", |a: Vec2, b: Vec2| a.x * b.x + a.y * b.y);
+    |                                             ^^^^^^^^^^^^^^^^^^^^^ help: consider using: `a.y.mul_add(b.y, a.x * b.x)`
+    |
+    = note: the performance gain from `mul_add` may vary depending on the target architecture
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#suboptimal_flops
+    = note: `-W clippy::suboptimal-flops` implied by `-W clippy::nursery`
+    = help: to override `-W clippy::nursery` add `#[allow(clippy::suboptimal_flops)]`
+
+warning: enum with no variants
+   --> tests/host/safe.rs:373:1
+    |
+373 | enum AreaTrait {}
+    | ^^^^^^^^^^^^^^^^^
+    |
+    = help: consider using the uninhabited type `!` (never type) or a wrapper around it to introduce a type which can't be instantiated
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#empty_enums
+    = note: `-W clippy::empty-enums` implied by `-W clippy::nursery`
+    = help: to override `-W clippy::nursery` add `#[allow(clippy::empty_enums)]`
+
+warning: enum with no variants
+   --> tests/host/safe.rs:428:1
+    |
+428 | enum ShapeTrait {}
+    | ^^^^^^^^^^^^^^^^^^
+    |
+    = help: consider using the uninhabited type `!` (never type) or a wrapper around it to introduce a type which can't be instantiated
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#empty_enums
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> tests/host/safe.rs:556:19
+    |
+556 |     let project = std::env::temp_dir().join(format!("mollie-stub-{}", std::process::id()));
+    |                   ^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> tests/host/safe.rs:556:71
+    |
+556 |     let project = std::env::temp_dir().join(format!("mollie-stub-{}", std::process::id()));
+    |                                                                       ^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> tests/host/safe.rs:575:5
+    |
+575 |     std::fs::remove_dir_all(&project).ok();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: consider bringing this path into scope with the `use` keyword
+   --> tests/host/safe.rs:631:24
+    |
+631 |         Vec::<(String, mollie::typing::TypeRef)>::new(),
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#absolute_paths
+
+warning: docs for function which may panic missing `# Panics` section
+  --> tests/host/main.rs:87:1
+   |
+87 | pub fn compiler() -> (Compiler<()>, HostItems) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: first possible panic found here
+  --> tests/host/main.rs:94:29
+   |
+94 |     .unwrap_or_else(|error| panic!("can't create the compiler: {error}"));
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#missing_panics_doc
+   = note: `-W clippy::missing-panics-doc` implied by `-W clippy::pedantic`
+   = help: to override `-W clippy::pedantic` add `#[allow(clippy::missing_panics_doc)]`
+
+warning: docs for function which may panic missing `# Panics` section
+   --> tests/host/main.rs:141:1
+    |
+141 | pub fn run_kept<R: Copy>(source: &str, returns: impl FnOnce(&HostItems, &mut Compiler<()>) -> TypeRef, stress: bool) -> Kept<R> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: first possible panic found here
+   --> tests/host/main.rs:148:9
+    |
+148 |         panic!("compilation failed:\n{}\n\nprogram:\n{source}", error.display(&provider.type_context.tcx));
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#missing_panics_doc
+
+warning: docs for function which may panic missing `# Panics` section
+   --> tests/host/main.rs:176:5
+    |
+176 |     pub fn run<T>(&self, call: impl FnOnce() -> T) -> T {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: first possible panic found here
+   --> tests/host/main.rs:180:36
+    |
+180 |             .unwrap_or_else(|trap| panic!("the program trapped: {trap}"))
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#missing_panics_doc
+
+warning: used underscore-prefixed binding
+   --> tests/host/main.rs:177:9
+    |
+177 |         self._compiler
+    |         ^^^^^^^^^^^^^^
+    |
+note: binding is defined here
+   --> tests/host/main.rs:133:5
+    |
+133 |     _compiler: Compiler<()>,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/main/index.html#used_underscore_binding
+    = note: `-W clippy::used-underscore-binding` implied by `-W clippy::pedantic`
+    = help: to override `-W clippy::pedantic` add `#[allow(clippy::used_underscore_binding)]`
+
+warning: `mollie` (example "ui") generated 12 warnings (run `cargo clippy --fix --example "ui" -p mollie -- ` to apply 1 suggestion)
+warning: `mollie` (lib test) generated 26 warnings (26 duplicates)
+warning: `mollie` (example "reload") generated 2 warnings (run `cargo clippy --fix --example "reload" -p mollie -- ` to apply 1 suggestion)
+warning: `mollie` (test "host") generated 14 warnings (run `cargo clippy --fix --test "host" -p mollie -- ` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s

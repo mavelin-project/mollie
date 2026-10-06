@@ -64,6 +64,37 @@ impl HostStub {
         Ok(())
     }
 
+    /// Writes the stub to `dir` like [`HostStub::write_to`], unless it's
+    /// already there, and removes files of modules the host doesn't have
+    /// anymore. A game can call it on every start (see
+    /// `CompilerExt::write_host_stub`): editors only see a change when the
+    /// host's API changes. Returns whether files were written.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a file can't be read, written or removed.
+    pub fn update(&self, dir: &Path) -> io::Result<bool> {
+        let existing = Self::read_from(dir).ok();
+        // Files are read back in path order.
+        let mut sorted = self.modules.clone();
+
+        sorted.sort();
+
+        if existing.as_ref().is_some_and(|existing| existing.root == self.root && existing.modules == sorted) {
+            return Ok(false);
+        }
+
+        for (path, _) in existing.iter().flat_map(|existing| &existing.modules) {
+            if !self.modules.iter().any(|(module, _)| module == path) {
+                fs::remove_file(dir.join(path.replace("::", "/")).with_extension("mol"))?;
+            }
+        }
+
+        self.write_to(dir)?;
+
+        Ok(true)
+    }
+
     /// Reads a stub written by [`HostStub::write_to`]: `lib.mol`, and files of
     /// the modules it declares.
     ///

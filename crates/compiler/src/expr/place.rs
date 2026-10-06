@@ -41,6 +41,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     /// The place `expr` refers to, or `None` for a temporary value. Fields of
     /// values of value types are parts of the place of the value; fields of
     /// objects are places in the object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the code uses something the compiler doesn't
+    /// support, or a type wasn't compiled.
     pub fn place(&mut self, ast: &TypedAST, expr: ExprRef) -> CompileResult<Option<Place>> {
         match ast[expr].value {
             Expr::Var(ref name) => Ok(Some(Place::Var {
@@ -81,6 +86,10 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// The value of representation `ty` in `place`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a value of `ty` can't be read from the place.
     pub fn read_place(&mut self, place: &Place, ty: MollieType) -> CompileResult<MolValue> {
         if self.is_whole_var(place, ty)? {
             let Place::Var { name, .. } = place else { unreachable!() };
@@ -101,6 +110,11 @@ impl<M: Module> FunctionCompiler<'_, M> {
     }
 
     /// Stores `value` of representation `ty` in `place`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `value` isn't a value of `ty`, or the place can't
+    /// hold it.
     pub fn write_place(&mut self, place: &Place, ty: MollieType, value: MolValue) -> CompileResult<()> {
         if self.is_whole_var(place, ty)? {
             let Place::Var { name, .. } = place else { unreachable!() };

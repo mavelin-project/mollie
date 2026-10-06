@@ -79,8 +79,8 @@ pub fn register(context: &mut TypedASTContext) {
     let string_compare = func(&[string, string], i32);
     let string_hash = func(&[string], u64);
     let string_check = func(&[string], bool);
-    let string_to_i64 = func(&[string], i64);
-    let string_to_f32 = func(&[string], f32);
+    let string_to_int = func(&[string], i64);
+    let string_to_float = func(&[string], f32);
     let string_at = func(&[string, usize], usize);
     let string_byte = func(&[string, usize], u8);
     let string_map = func(&[string], string);
@@ -104,9 +104,9 @@ pub fn register(context: &mut TypedASTContext) {
         ("compare", "string_compare", &["self", "other"], string_compare),
         ("hash", "string_hash", &["self"], string_hash),
         ("is_int", "string_is_int", &["self"], string_check),
-        ("to_int", "string_to_int", &["self"], string_to_i64),
+        ("to_int", "string_to_int", &["self"], string_to_int),
         ("is_float", "string_is_float", &["self"], string_check),
-        ("to_float", "string_to_float", &["self"], string_to_f32),
+        ("to_float", "string_to_float", &["self"], string_to_float),
         ("char_width_at", "string_char_width_at", &["self", "index"], string_at),
         ("byte_at", "string_byte_at", &["self", "index"], string_byte),
         ("char_count", "string_char_count", &["self"], string_to_usize),

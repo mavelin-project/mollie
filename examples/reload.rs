@@ -26,23 +26,19 @@ use mollie::{
 fn main() {
     let examples_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
     let path = examples_dir.join("reload.mol");
-    let mut compiler = Compiler::with_symbols(
-        FileModuleLoader {
-            current_dir: examples_dir.clone(),
-        },
-        [],
-    )
-    .unwrap_or_else(|error| panic!("can't create the compiler: {error}"));
+    let mut compiler =
+        Compiler::with_symbols(FileModuleLoader { current_dir: examples_dir }, []).unwrap_or_else(|error| panic!("can't create the compiler: {error}"));
 
     Host::new(&mut compiler).function_named("log", &["message"], |message: MolStr| println!("[script] {message}"));
 
     let mut modified: Option<SystemTime> = None;
     let mut loaded = false;
     let mut state = 0;
+    let mut frame = 0;
 
     println!("edit {} to change the script, Ctrl+C to stop", path.display());
 
-    for frame in 0.. {
+    loop {
         let current = fs::metadata(&path).and_then(|metadata| metadata.modified()).ok();
 
         if current != modified {
@@ -76,6 +72,8 @@ fn main() {
                 Err(trap) => eprintln!("frame {frame}: the script stopped: {trap}"),
             }
         }
+
+        frame += 1;
 
         thread::sleep(Duration::from_millis(500));
     }

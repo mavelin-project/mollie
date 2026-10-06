@@ -1,4 +1,5 @@
 //! Type-checks small programs end to end and checks the reported errors.
+#![allow(clippy::missing_panics_doc)]
 
 mod arguments;
 mod bounds;
@@ -65,7 +66,7 @@ pub fn check_with_modules(source: &str, modules: &[(&str, &str)]) -> (Vec<TypeEr
     context.process(loader, source, Vec::<(String, TypeRef)>::new(), void);
 
     (
-        context.diagnostics.errors.into_values().map(|diagnostic| diagnostic.error).collect(),
+        context.diagnostics.errors.into_values().map(|diagnostic| *diagnostic.error).collect(),
         context.tcx,
     )
 }

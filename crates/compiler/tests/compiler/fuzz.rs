@@ -3,15 +3,95 @@
 //! programs) are compiled and run with limits. They may be rejected or trap,
 //! but the compiler must never fail internally (panic).
 //!
-//! The number of programs per generator is `MOLLIE_FUZZ_ITERS` (default 50:
-//! every program loads and checks `std` with a new compiler).
+//! The number of programs per generator is `MOLLIE_FUZZ_ITERS` (default 50).
+//! A compiler is reused for [`PROGRAMS_PER_COMPILER`] programs (a new one
+//! loads and checks `std`, which takes most of the time), like a game
+//! reloading an addon many times. The tests don't take the lock of the other
+//! tests: generated programs can't name the host functions it protects.
 
-use std::slice::from_ref;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    io::Write,
+    slice::from_ref,
+    sync::{Mutex, Once, PoisonError},
+    thread::{self, ThreadId},
+    time::{Duration, Instant},
+};
 
-use mollie_compiler::{error::CompileError, sandbox::Limits};
+use mollie_compiler::{Compiler, error::CompileError, sandbox::Limits};
 use mollie_typing::{TypeError, TypeRef};
 
-use crate::{compiler, lock};
+use crate::compiler;
+
+/// Programs compiled by one compiler before a new one is made.
+const PROGRAMS_PER_COMPILER: usize = 200;
+
+type RunningProgram = (Instant, String, bool);
+
+/// Programs being checked, by thread: when they started, and whether the
+/// watchdog reported them.
+static RUNNING: Mutex<Option<HashMap<ThreadId, RunningProgram>>> = Mutex::new(None);
+
+/// A program taking longer than this is reported by the watchdog.
+const SLOW: Duration = Duration::from_secs(10);
+
+/// Starts a thread reporting programs that take longer than [`SLOW`] (likely
+/// hanging the compiler), on stderr directly: output of tests is only shown
+/// when they fail, and a hanging one never does.
+fn start_watchdog() {
+    static STARTED: Once = Once::new();
+
+    STARTED.call_once(|| {
+        thread::spawn(|| {
+            loop {
+                thread::sleep(Duration::from_secs(1));
+
+                let mut running = RUNNING.lock().unwrap_or_else(PoisonError::into_inner);
+
+                for (start, source, reported) in running.get_or_insert_with(HashMap::new).values_mut() {
+                    if !*reported && start.elapsed() > SLOW {
+                        *reported = true;
+
+                        let _ = writeln!(
+                            std::io::stderr(),
+                            "\nfuzz: a program has been compiling or running for over {SLOW:?}:\n{source}\n"
+                        );
+                    }
+                }
+            }
+        });
+    });
+}
+
+/// Records that the current thread checks `source` until the guard is
+/// dropped.
+fn watch(source: &str) -> impl Drop {
+    struct Watched;
+
+    impl Drop for Watched {
+        fn drop(&mut self) {
+            let mut running = RUNNING.lock().unwrap_or_else(PoisonError::into_inner);
+
+            running.get_or_insert_with(HashMap::new).remove(&thread::current().id());
+        }
+    }
+
+    start_watchdog();
+    RUNNING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_or_insert_with(HashMap::new)
+        .insert(thread::current().id(), (Instant::now(), source.to_owned(), false));
+
+    Watched
+}
+
+thread_local! {
+    /// The compiler of the current batch of programs on this thread, and how
+    /// many it compiled.
+    static BATCH: RefCell<Option<(Compiler<()>, usize)>> = const { RefCell::new(None) };
+}
 
 /// A xorshift generator: the same seed gives the same programs.
 struct Rng(u64);
@@ -52,8 +132,23 @@ enum Outcome {
 /// Panics only if the compiler fails internally.
 #[track_caller]
 fn check(source: &str) -> Outcome {
-    let _guard = lock();
-    let mut compiler = compiler();
+    let _watched = watch(source);
+
+    BATCH.with_borrow_mut(|batch| {
+        if batch.as_ref().is_none_or(|&(_, compiled)| compiled >= PROGRAMS_PER_COMPILER) {
+            *batch = Some((compiler(), 0));
+        }
+
+        let (compiler, compiled_count) = batch.as_mut().expect("made above");
+
+        *compiled_count += 1;
+
+        check_with(compiler, source)
+    })
+}
+
+#[track_caller]
+fn check_with(compiler: &mut Compiler<()>, source: &str) -> Outcome {
     let i32 = compiler.type_context.tcx.types.core_types.i32;
     let mut provider = compiler.start_compiling();
 
@@ -245,6 +340,19 @@ fn long_and_deep_code_is_rejected() {
 }
 
 #[test]
+fn programs_that_hung_the_parser_are_rejected() {
+    // Found by `random_tokens` and `mutated_programs`: a name after a node
+    // property without a comma was never consumed.
+    for source in [
+        "Point { x: i32, y: i32 i32 enum p struct Point { x: 1, y: 2 };\np.x + p.y",
+        "y { Option Some > || break ? _ @[ } else true from",
+        "Point { x: 1 y: 2 }",
+    ] {
+        assert!(matches!(check(source), Outcome::Rejected(..)), "{source}");
+    }
+}
+
+#[test]
 fn nesting_within_the_limits_works() {
     let chain = format!("{}1", "1 + ".repeat(100));
     let parens = format!("{}1{}", "(".repeat(50), ")".repeat(50));
@@ -268,7 +376,7 @@ fn growing_instances_are_rejected() {
             panic!("`{source}` must be rejected");
         };
 
-        assert!(errors.iter().any(|error| matches!(error.error, TypeError::InstantiationLimit)), "{errors:?}");
+        assert!(errors.iter().any(|error| matches!(&*error.error, TypeError::InstantiationLimit)), "{errors:?}");
     }
 }
 

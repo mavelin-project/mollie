@@ -7,7 +7,7 @@ use crate::{Expr, Parse, ParseError, ParseResult, Parser};
 pub enum TemplatePart {
     Text(String),
     /// `${value}`, or `${value:spec}` with a format specifier.
-    Expr(Positioned<Expr>, Option<FormatSpec>),
+    Expr(Box<Positioned<Expr>>, Option<FormatSpec>),
 }
 
 /// A string with interpolated expressions: `"Hi, ${name}!"`.
@@ -25,8 +25,8 @@ impl Parse for TemplateExpr {
             .into_iter()
             .map(|part| match part {
                 TokenTemplatePart::Text(text) => Ok(TemplatePart::Text(text)),
-                TokenTemplatePart::Expr(tokens, spec) => {
-                    let mut parser = parser.sub(tokens);
+                TokenTemplatePart::Expr(mut tokens, spec) => {
+                    let mut parser = parser.sub(&mut tokens);
                     let expr = Expr::parse(&mut parser)?;
 
                     // The whole interpolated part must be one expression.
@@ -41,7 +41,7 @@ impl Parse for TemplateExpr {
                         None => None,
                     };
 
-                    Ok(TemplatePart::Expr(expr, spec))
+                    Ok(TemplatePart::Expr(Box::new(expr), spec))
                 }
             })
             .collect::<ParseResult<Vec<_>>>()?;

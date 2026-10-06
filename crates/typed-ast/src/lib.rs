@@ -424,6 +424,7 @@ where
     }
 
     #[track_caller]
+    #[allow(clippy::too_many_arguments, reason = "the parts of the context it reads, borrowed separately")]
     fn use_item(
         &mut self,
         adt_types: &IndexVec<AdtRef, Adt>,
@@ -593,7 +594,7 @@ where
                 self.in_progress.retain(|in_progress| in_progress != &item);
                 self.used_items.push(item);
             }
-        })
+        });
     }
 }
 
@@ -1880,10 +1881,10 @@ impl ConstantContext {
     /// # Errors
     ///
     /// Returns an error if the limit is reached.
-    pub const fn step(&mut self) -> Result<(), ()> {
+    pub const fn step(&mut self) -> Option<()> {
         self.steps += 1;
 
-        if self.steps > Self::MAX_STEPS { Err(()) } else { Ok(()) }
+        if self.steps > Self::MAX_STEPS { None } else { Some(()) }
     }
 
     pub fn push_frame(&mut self) {
@@ -2823,8 +2824,8 @@ const p: Point = Vector { x: 1.0, y: 2.0 };";
         // ariadne::Source::from(source))).unwrap(); }
 
         std::assert_matches!(context.diagnostics.errors.raw.as_slice(), [Diagnostic {
-            error: TypeError::Unexpected { .. },
+            error,
             ..
-        }]);
+        }] if matches!(&**error, TypeError::Unexpected { .. }));
     }
 }

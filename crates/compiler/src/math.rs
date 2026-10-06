@@ -1,6 +1,8 @@
-//! Math functions of programs, the same on every platform: they're computed
-//! in `f64` with only basic IEEE operations (no platform `libm`, which differs
-//! between systems), then rounded to `f32`. Argument reduction and series in
+//! Math functions of programs, the same on every platform.
+//!
+//! They're computed in `f64` with only basic IEEE operations (no platform
+//! `libm`, which differs between systems), then rounded to `f32`. Argument
+//! reduction and series in
 //! `f64` are far more precise than `f32` needs.
 
 use std::f64::consts::{FRAC_PI_2, LN_2, PI, SQRT_2};
@@ -186,7 +188,7 @@ pub fn atan2(y: f64, x: f64) -> f64 {
 }
 
 pub fn pow(x: f64, y: f64) -> f64 {
-    if y == 0.0 || x == 1.0 {
+    if y == 0.0 || (x - 1.0).abs() < 0.001 {
         return 1.0;
     }
 

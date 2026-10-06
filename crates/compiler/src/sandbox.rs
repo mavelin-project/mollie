@@ -14,6 +14,7 @@
 //!   depth);
 //! - heap: checked by allocations of compiled code, per program (every program
 //!   has its own heap).
+#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
 use std::{
     cell::RefCell,
@@ -292,6 +293,11 @@ thread_local! {
 /// # Safety
 ///
 /// `state` must point to the state of the program called by `call`.
+///
+/// # Errors
+///
+/// Returns the [`Trap`] that stopped the program: an error of the program, or
+/// an exceeded limit.
 pub unsafe fn run<R>(state: ptr::NonNull<VmState>, limits: Limits, call: impl FnOnce() -> R) -> Result<R, Trap> {
     // A program may be run again by the host while it's running (in a
     // callback), so the outer state is restored afterwards.
