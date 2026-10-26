@@ -1,0 +1,53 @@
+// Terrain of `chunks` chunks into a buffer of block ids (16x256x16 each):
+// a height per column from 2D value noise, then every block written (stone,
+// dirt, grass, water, air). Returns how many blocks aren't air.
+
+func hash(x: i32, z: i32) -> f32 {
+    let mut h = x * 374761393 + z * 668265263;
+
+    h = (h ^ (h >> 13)) * 1274126177;
+
+    ((h ^ (h >> 16)) & 65535) as f32 / 65535.0
+}
+
+func smooth(x: f32, z: f32) -> f32 {
+    let fx = x.floor();
+    let fz = z.floor();
+    let ix = fx as i32;
+    let iz = fz as i32;
+    let tx = x - fx;
+    let tz = z - fz;
+    let top = hash(ix, iz) + (hash(ix + 1, iz) - hash(ix, iz)) * tx;
+    let bottom = hash(ix, iz + 1) + (hash(ix + 1, iz + 1) - hash(ix, iz + 1)) * tx;
+
+    top + (bottom - top) * tz
+}
+
+let blocks: u32[] = [];
+
+blocks.resize(65536, 0);
+
+let mut solid = 0;
+
+for chunk in 0..chunks {
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = (chunk * 16 + x) as f32;
+            let height = (48.0 + smooth(wx / 32.0, (z as f32) / 32.0) * 40.0 + smooth(wx / 8.0, (z as f32) / 8.0) * 6.0) as i32;
+
+            for y in 0..256 {
+                let block = if y < height - 4 { 1 } else if y < height - 1 { 2 } else if y < height { 3 } else if y < 64 { 4 } else { 0 };
+
+                blocks[(y * 256 + z * 16 + x) as usize] = block as u32;
+            }
+        }
+    }
+
+    for i in 0..65536 {
+        if blocks[i as usize] != 0 {
+            solid += 1;
+        }
+    }
+}
+
+solid

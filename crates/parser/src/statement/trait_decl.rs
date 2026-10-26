@@ -1,7 +1,7 @@
 use mollie_lexer::Token;
 use mollie_shared::Positioned;
 
-use crate::{Attribute, Ident, NameWithGenerics, Parse, ParseResult, Parser, ty::Type};
+use crate::{Attribute, BlockExpr, Ident, NameWithGenerics, Parse, ParseResult, Parser, ty::Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct TraitFuncArgument {
@@ -31,6 +31,7 @@ pub struct TraitFunction {
     pub this: Option<Positioned<()>>,
     pub args: Vec<Positioned<TraitFuncArgument>>,
     pub returns: Option<Positioned<Type>>,
+    pub body: Option<Positioned<BlockExpr>>,
 }
 
 impl Parse for TraitFunction {
@@ -78,20 +79,29 @@ impl Parse for TraitFunction {
             None
         };
 
-        let end = parser.consume(&Token::Semi)?;
+        let (body, end) = if parser.check(&Token::BraceOpen) {
+            let body = BlockExpr::parse(parser)?;
+            let end = body.span;
 
-        Ok(start.between(&end).wrap(Self {
+            (Some(body), end)
+        } else {
+            (None, parser.consume(&Token::Semi)?.span)
+        };
+
+        Ok(start.span.between(end).wrap(Self {
             attributes,
             name,
             this,
             args,
             returns,
+            body,
         }))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct TraitDecl {
+    pub public: bool,
     pub attributes: Vec<Positioned<Attribute>>,
     pub name: Positioned<NameWithGenerics>,
     pub functions: Positioned<Vec<Positioned<TraitFunction>>>,
@@ -103,6 +113,11 @@ impl TraitDecl {
         let name = NameWithGenerics::parse(parser)?;
         let functions = parser.consume_in(&Token::BraceOpen, &Token::BraceClose)?;
 
-        Ok(start.between(&functions).wrap(Self { attributes, name, functions }))
+        Ok(start.between(&functions).wrap(Self {
+            public: false,
+            attributes,
+            name,
+            functions,
+        }))
     }
 }

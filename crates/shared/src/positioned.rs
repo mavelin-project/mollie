@@ -3,9 +3,9 @@ use std::fmt;
 use crate::Span;
 
 #[derive(Debug, Hash, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-pub struct Positioned<T> {
+pub struct Positioned<T, S = Span> {
     pub value: T,
-    pub span: Span,
+    pub span: S,
 }
 
 impl<T: fmt::Display> fmt::Display for Positioned<T> {
@@ -14,11 +14,17 @@ impl<T: fmt::Display> fmt::Display for Positioned<T> {
     }
 }
 
-impl<T> Positioned<T> {
-    pub const fn new(value: T, span: Span) -> Self {
+impl<T, S> Positioned<T, S> {
+    pub const fn new(value: T, span: S) -> Self {
         Self { value, span }
     }
 
+    pub fn unpack(self) -> (S, T) {
+        (self.span, self.value)
+    }
+}
+
+impl<T> Positioned<T> {
     pub const fn between<U>(&self, value: &Positioned<U>) -> Span {
         self.span.between(value.span)
     }
@@ -33,9 +39,5 @@ impl<T> Positioned<T> {
 
     pub fn inner_map<U, F: FnOnce(Self) -> U>(self, f: F) -> Positioned<U> {
         self.span.wrap(f(self))
-    }
-
-    pub fn unpack(self) -> (Span, T) {
-        (self.span, self.value)
     }
 }

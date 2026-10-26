@@ -33,6 +33,7 @@ pub enum PrimitiveType {
     Int(IntType),
     UInt(UIntType),
     F32,
+    F64,
     Bool,
     String,
     Void,
@@ -54,6 +55,10 @@ impl PrimitiveType {
     pub const fn is_f32(&self) -> bool {
         matches!(self, Self::F32)
     }
+
+    pub const fn is_float(&self) -> bool {
+        matches!(self, Self::F32 | Self::F64)
+    }
 }
 
 impl fmt::Display for PrimitiveType {
@@ -71,6 +76,7 @@ impl fmt::Display for PrimitiveType {
             Self::UInt(UIntType::U16) => f.write_str("u16"),
             Self::UInt(UIntType::U8) => f.write_str("u8"),
             Self::F32 => f.write_str("f32"),
+            Self::F64 => f.write_str("f64"),
             Self::Bool => f.write_str("bool"),
             Self::String => f.write_str("string"),
             Self::Void => f.write_str("void"),

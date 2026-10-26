@@ -1,0 +1,199 @@
+// Numbers: comparing and combining them, and functions of floats that are
+// the same on every platform.
+
+// Mathematical constants.
+pub const PI: f32 = 3.14159265;
+pub const TAU: f32 = 6.28318531;
+pub const E: f32 = 2.71828183;
+pub const PI_F64: f64 = 3.141592653589793;
+pub const TAU_F64: f64 = 6.283185307179586;
+pub const E_F64: f64 = 2.718281828459045;
+
+impl i8 {
+    // The value without its sign.
+    pub func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i16 {
+    // The value without its sign.
+    pub func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i32 {
+    // The value without its sign.
+    pub func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl i64 {
+    // The value without its sign.
+    pub func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl isize {
+    // The value without its sign.
+    pub func abs(self) -> Self { if self < 0 { -self } else { self } }
+
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u8 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u16 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u32 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl u64 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl usize {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+}
+
+impl f32 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+
+    // The nearest integer, halfway cases away from zero.
+    pub func round(self) -> Self {
+        let whole = self.trunc();
+
+        if (self - whole).abs() >= 0.5 {
+            if self < 0.0 { whole - 1.0 } else { whole + 1.0 }
+        } else {
+            whole
+        }
+    }
+
+    // The value `t` of the way from this one to `to`.
+    pub func lerp(self, to: Self, t: Self) -> Self { self + (to - self) * t }
+
+    // -1, 0 or 1, by the sign of the value.
+    pub func signum(self) -> Self { if self > 0.0 { 1.0 } else if self < 0.0 { -1.0 } else { 0.0 } }
+
+    pub func to_radians(self) -> Self { self * PI / 180.0 }
+
+    pub func to_degrees(self) -> Self { self * 180.0 / PI }
+}
+
+impl f64 {
+    // The smaller of the values.
+    pub func min(self, other: Self) -> Self { if other < self { other } else { self } }
+
+    // The larger of the values.
+    pub func max(self, other: Self) -> Self { if other > self { other } else { self } }
+
+    // The value, kept between `low` and `high`.
+    pub func clamp(self, low: Self, high: Self) -> Self { if self < low { low } else if self > high { high } else { self } }
+
+    // The nearest integer, halfway cases away from zero.
+    pub func round(self) -> Self {
+        let whole = self.trunc();
+
+        if (self - whole).abs() >= 0.5 {
+            if self < 0.0 { whole - 1.0 } else { whole + 1.0 }
+        } else {
+            whole
+        }
+    }
+
+    // The value `t` of the way from this one to `to`.
+    pub func lerp(self, to: Self, t: Self) -> Self { self + (to - self) * t }
+
+    // -1, 0 or 1, by the sign of the value.
+    pub func signum(self) -> Self { if self > 0.0 { 1.0 } else if self < 0.0 { -1.0 } else { 0.0 } }
+
+    pub func to_radians(self) -> Self { self * PI_F64 / 180.0 }
+
+    pub func to_degrees(self) -> Self { self * 180.0 / PI_F64 }
+}

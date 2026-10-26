@@ -11,7 +11,7 @@ use crate::{Parse, ParseResult, Parser};
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Number {
     I64(i64),
-    F32(f32),
+    Float(f64),
 }
 
 impl Hash for Number {
@@ -20,7 +20,7 @@ impl Hash for Number {
 
         match self {
             Self::I64(value) => value.hash(state),
-            Self::F32(value) => value.to_bits().hash(state),
+            Self::Float(value) => value.to_bits().hash(state),
         }
     }
 }
@@ -47,7 +47,7 @@ impl Parse for LiteralExpr {
                     Token::Bool(value) => Self::Bool(value),
                     Token::Number(value, postfix) => Self::Number(
                         value.map(|value| match value {
-                            NumberToken::F32(value) => Number::F32(value),
+                            NumberToken::Float(value) => Number::Float(value),
                             NumberToken::I64(value) => Number::I64(value),
                         }),
                         postfix,

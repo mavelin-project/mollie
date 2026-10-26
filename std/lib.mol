@@ -1,2 +1,13 @@
-module option;
-module iter;
+// The standard library. Items of `prelude` are visible in every module.
+
+pub module option;
+pub module result;
+pub module iter;
+pub module container;
+pub module range;
+pub module math;
+pub module hash;
+pub module array;
+pub module string;
+pub module collections;
+pub module prelude;

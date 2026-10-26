@@ -5,6 +5,7 @@ use crate::{BlockExpr, Expr, Ident, Parse, ParseResult, Parser, Precedence};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct ForInExpr {
+    pub label: Option<Positioned<Ident>>,
     pub name: Positioned<Ident>,
     pub target: Box<Positioned<Expr>>,
     pub block: Positioned<BlockExpr>,
@@ -21,6 +22,7 @@ impl Parse for ForInExpr {
         let block = BlockExpr::parse(parser)?;
 
         Ok(start.between(&block).wrap(Self {
+            label: None,
             name,
             target: Box::new(target),
             block,

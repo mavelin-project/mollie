@@ -1,0 +1,106 @@
+// Fractal Perlin noise (4 octaves) at every block of `chunks` chunks
+// (16x256x16 each): what a terrain generator does most. Returns the sum of
+// the samples (to compare with Rust's).
+
+func fade(t: f32) -> f32 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+func lerp(t: f32, a: f32, b: f32) -> f32 {
+    a + t * (b - a)
+}
+
+func grad(hash: i32, x: f32, y: f32, z: f32) -> f32 {
+    let h = hash & 15;
+    let u = if h < 8 { x } else { y };
+    let v = if h < 4 { y } else if h == 12 || h == 14 { x } else { z };
+
+    (if (h & 1) == 0 { u } else { -u }) + (if (h & 2) == 0 { v } else { -v })
+}
+
+// The permutation table (doubled), shuffled from `seed`.
+func permutation(seed: i32) -> i32[] {
+    let table: i32[] = [];
+    let mut state = seed;
+
+    for i in 0..256 {
+        table.push(i);
+    }
+
+    let mut i = 255;
+
+    while i > 0 {
+        state = state * 1103515245 + 12345;
+
+        let j = ((state >> 16) & 32767) % (i + 1);
+        let swap = table[i as usize];
+
+        table[i as usize] = table[j as usize];
+        table[j as usize] = swap;
+        i -= 1;
+    }
+
+    for i in 0..256 {
+        table.push(table[i as usize]);
+    }
+
+    table
+}
+
+func noise(p: i32[], x: f32, y: f32, z: f32) -> f32 {
+    let fx = x.floor();
+    let fy = y.floor();
+    let fz = z.floor();
+    let xi = (fx as i32) & 255;
+    let yi = (fy as i32) & 255;
+    let zi = (fz as i32) & 255;
+    let xf = x - fx;
+    let yf = y - fy;
+    let zf = z - fz;
+    let u = fade(xf);
+    let v = fade(yf);
+    let w = fade(zf);
+    let a = p[xi as usize] + yi;
+    let aa = p[a as usize] + zi;
+    let ab = p[(a + 1) as usize] + zi;
+    let b = p[(xi + 1) as usize] + yi;
+    let ba = p[b as usize] + zi;
+    let bb = p[(b + 1) as usize] + zi;
+
+    lerp(w,
+        lerp(v,
+            lerp(u, grad(p[aa as usize], xf, yf, zf), grad(p[ba as usize], xf - 1.0, yf, zf)),
+            lerp(u, grad(p[ab as usize], xf, yf - 1.0, zf), grad(p[bb as usize], xf - 1.0, yf - 1.0, zf))),
+        lerp(v,
+            lerp(u, grad(p[(aa + 1) as usize], xf, yf, zf - 1.0), grad(p[(ba + 1) as usize], xf - 1.0, yf, zf - 1.0)),
+            lerp(u, grad(p[(ab + 1) as usize], xf, yf - 1.0, zf - 1.0), grad(p[(bb + 1) as usize], xf - 1.0, yf - 1.0, zf - 1.0))))
+}
+
+func fbm(p: i32[], x: f32, y: f32, z: f32) -> f32 {
+    let mut sum = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+
+    for octave in 0..4 {
+        sum += noise(p, x * frequency, y * frequency, z * frequency) * amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+
+    sum
+}
+
+let p = permutation(1234);
+let mut total = 0.0;
+
+for chunk in 0..chunks {
+    for y in 0..256 {
+        for z in 0..16 {
+            for x in 0..16 {
+                total += fbm(p, ((chunk * 16 + x) as f32) * 0.031, (y as f32) * 0.031, (z as f32) * 0.031);
+            }
+        }
+    }
+}
+
+total

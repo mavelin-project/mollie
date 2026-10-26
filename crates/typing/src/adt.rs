@@ -5,7 +5,8 @@ use mollie_index::{Idx, IndexBoxedSlice};
 
 use crate::{AdtVariantRef, FieldRef, ty::TypeRef};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AdtKind {
     Struct,
     View,
@@ -28,7 +29,7 @@ pub struct AdtVariant {
 
 #[derive(Debug)]
 pub struct Adt {
-    pub name: Option<String>,
+    pub name: String,
     pub collectable: bool,
     pub kind: AdtKind,
     pub generics: usize,

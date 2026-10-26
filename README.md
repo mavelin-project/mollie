@@ -6,9 +6,9 @@ A strictly typed scripting language. Uses [`cranelift`](https://github.com/bytec
 
 ## Documentation
 
-The language documentation can be found [here](./lang-docs/README.md).
+The documentation is a book in [`book`](./book/src/README.md), in two parts: [the language](./book/src/language/index.md), and [embedding and internals](./book/src/internals/index.md). To read it in a browser, run `mdbook serve book` (it needs [mdBook](https://rust-lang.github.io/mdBook/)).
 
-Everything related to its current implementation can be found [here](./docs/README.md) and on docs.rs once all the crates have been published.
+The API of the host is documented on docs.rs once all the crates have been published.
 
 ## License
 

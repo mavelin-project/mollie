@@ -6,11 +6,17 @@ pub enum NumberToken {
     #[display("{_0}")]
     #[is_variant]
     #[unwrap]
-    F32(f32),
+    Float(f64),
     #[display("{_0}")]
     #[is_variant]
     #[unwrap]
     I64(i64),
+}
+
+#[derive(Debug, PartialEq, Clone, PartialOrd)]
+pub enum TemplatePart {
+    Text(String),
+    Expr(Vec<Positioned<Token>>, Option<String>),
 }
 
 #[derive(Debug, Display, IsVariant, Unwrap, PartialEq, Clone, PartialOrd)]
@@ -18,14 +24,14 @@ pub enum Token {
     #[is_variant]
     #[unwrap]
     Ident(String),
-    // #[display("\"{}\"", _0.iter().map(ToString::to_string).collect::<String>())]
-    // #[is_variant]
-    // FormattedString(Vec<StringPart>),
-    // #[display("\"{_0}\"")]
     #[display("{_0:?}")]
     #[is_variant]
     #[unwrap]
     String(String),
+    #[display("<template>")]
+    #[is_variant]
+    #[unwrap]
+    Template(Vec<TemplatePart>),
     #[display("{_0}")]
     #[is_variant]
     #[unwrap]
@@ -38,9 +44,9 @@ pub enum Token {
     Import,
     #[display("module")]
     Module,
-    #[display("public")]
-    Public,
-    #[display("super")]
+    #[display("pub")]
+    Pub,
+    #[display("<super>")]
     Super,
     #[display("self")]
     This,
@@ -52,10 +58,10 @@ pub enum Token {
     As,
     #[display("is")]
     Is,
-    #[display("from")]
-    From,
     #[display("..")]
     DotDot,
+    #[display("..=")]
+    DotDotEq,
     #[display("enum")]
     Enum,
     #[display("struct")]
@@ -64,6 +70,8 @@ pub enum Token {
     Const,
     #[display("let")]
     Let,
+    #[display("mut")]
+    Mut,
     #[display("while")]
     While,
     #[display("for")]
@@ -84,6 +92,16 @@ pub enum Token {
     Attr,
     #[display("switch")]
     Switch,
+    #[display("match")]
+    Match,
+    #[display("return")]
+    Return,
+    #[display("break")]
+    Break,
+    #[display("continue")]
+    Continue,
+    #[display("'{_0}")]
+    Label(String),
     #[display("[")]
     BracketOpen,
     #[display("]")]
@@ -146,6 +164,8 @@ pub enum Token {
     Question,
     #[display("%")]
     Percent,
+    #[display("%=")]
+    PercentEq,
     #[display(",")]
     Comma,
     #[display("<")]
@@ -156,6 +176,14 @@ pub enum Token {
     LessEq,
     #[display(">=")]
     GreaterEq,
+    #[display("<<")]
+    Shl,
+    #[display("<<=")]
+    ShlEq,
+    #[display("^")]
+    Caret,
+    #[display("^=")]
+    CaretEq,
     #[display(".")]
     Dot,
     #[display("impl")]
@@ -164,6 +192,10 @@ pub enum Token {
     Trait,
     #[display("{_0}")]
     Unknown(char),
+    #[display("invalid number `{_0}`")]
+    InvalidNumber(String),
+    #[display("{_0}")]
+    Invalid(String),
     #[display("<EOF>")]
     #[is_variant]
     EOF,
@@ -183,8 +215,8 @@ impl Token {
         if let Self::Number(value, _) = self { value.value.is_i_64() } else { false }
     }
 
-    pub const fn is_f32(&self) -> bool {
-        if let Self::Number(value, _) = self { value.value.is_f_32() } else { false }
+    pub const fn is_float(&self) -> bool {
+        if let Self::Number(value, _) = self { value.value.is_float() } else { false }
     }
 
     pub fn unwrap_integer(self) -> (Positioned<i64>, Option<Positioned<String>>) {
@@ -192,31 +224,4 @@ impl Token {
 
         (number.span.wrap(number.value.unwrap_i_64()), postfix)
     }
-
-    // #[must_use]
-    // pub const fn is_number(&self) -> bool {
-    //     self.is_float() || self.is_integer()
-    // }
-
-    // #[must_use]
-    // pub const fn is_usize(&self) -> bool {
-    //     if let Self::Integer(value, _) = self {
-    //         *value >= 0
-    //     } else {
-    //         false
-    //     }
-    // }
-
-    // #[must_use]
-    // pub fn into_usize(self) -> usize {
-    //     if let Self::Integer(value, _) = self {
-    //         let Ok(value) = value.try_into() else {
-    //             unreachable!()
-    //         };
-
-    //         value
-    //     } else {
-    //         unreachable!()
-    //     }
-    // }
 }

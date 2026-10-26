@@ -4,24 +4,6 @@ use mollie_typing::{IntType, PrimitiveType, UIntType};
 
 use crate::{Ident, Parse, ParseResult, Parser, TypePathExpr, TypePathSegment};
 
-// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
-// pub enum PrimitiveType {
-//     ISize,
-//     I64,
-//     I32,
-//     I16,
-//     I8,
-//     USize,
-//     U64,
-//     U32,
-//     U16,
-//     U8,
-//     F32,
-//     Bool,
-//     String,
-//     Void,
-// }
-
 impl Parse for PrimitiveType {
     fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
         parser.consume_map(|token| match token {
@@ -37,6 +19,7 @@ impl Parse for PrimitiveType {
                 "u16" => Some(Self::UInt(UIntType::U16)),
                 "u8" => Some(Self::UInt(UIntType::U8)),
                 "f32" => Some(Self::F32),
+                "f64" => Some(Self::F64),
                 "bool" => Some(Self::Bool),
                 "string" => Some(Self::String),
                 "void" => Some(Self::Void),
@@ -44,6 +27,37 @@ impl Parse for PrimitiveType {
             },
             _ => None,
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+pub struct GenericParam {
+    pub name: Positioned<Ident>,
+    pub bounds: Vec<Positioned<TypePathExpr>>,
+}
+
+impl Parse for GenericParam {
+    fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
+        let name = Ident::parse(parser)?;
+        let mut bounds = Vec::new();
+
+        if parser.try_consume(&Token::Colon) {
+            loop {
+                bounds.push(TypePathExpr::parse(
+                    TypePathSegment::parse_from(Ident::parse(parser)?, parser, false)?,
+                    parser,
+                    false,
+                )?);
+
+                if !parser.try_consume(&Token::Plus) {
+                    break;
+                }
+            }
+        }
+
+        let span = bounds.last().map_or(name.span, |bound| name.between(bound));
+
+        Ok(span.wrap(Self { name, bounds }))
     }
 }
 
@@ -80,9 +94,17 @@ impl Parse for TypeArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+pub enum ArrayKind {
+    Growable,
+    Fixed(Positioned<usize>),
+    View,
+    AnySize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Array(Box<Positioned<Self>>, Option<Positioned<usize>>),
+    Array(Box<Positioned<Self>>, ArrayKind),
     Func(Vec<Positioned<Self>>, Option<Box<Positioned<Self>>>),
     Path(TypePathExpr),
 }
@@ -117,7 +139,14 @@ impl Type {
 
 impl Parse for Type {
     fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
-        let value = if parser.try_consume(&Token::ParenOpen) {
+        // Types nest in type arguments and function types.
+        parser.nested(Self::parse_nested)
+    }
+}
+
+impl Type {
+    fn parse_nested(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
+        let mut value = if parser.try_consume(&Token::ParenOpen) {
             let value = Self::parse_simple(parser)?;
 
             parser.consume(&Token::ParenClose)?;
@@ -127,18 +156,28 @@ impl Parse for Type {
             Self::parse_simple(parser)?
         };
 
-        let value = if parser.try_consume(&Token::BracketOpen) {
-            let size = parser
-                .consume_if(Token::is_i64)
-                .map(|v| v.map(Token::unwrap_integer))
-                .map_or(None, |size| size.value.0.value.try_into().ok().map(|v| size.span.wrap(v)));
+        // `T[2][4]` is an array of arrays: four of `T[2]`.
+        while parser.try_consume(&Token::BracketOpen) {
+            let kind = if parser.try_consume(&Token::DotDot) {
+                ArrayKind::View
+            } else if parser.check_if(|token| token.is_ident_and(|name| name == "_")) {
+                parser.next();
+
+                ArrayKind::AnySize
+            } else if parser.check_if(Token::is_i64) {
+                let size = parser.consume_if(Token::is_i64)?.map(Token::unwrap_integer);
+                let span = size.span;
+                let size = usize::try_from(size.value.0.value).map_err(|_| crate::ParseError::new("an array's size can't be negative", span))?;
+
+                ArrayKind::Fixed(span.wrap(size))
+            } else {
+                ArrayKind::Growable
+            };
 
             let end = parser.consume(&Token::BracketClose)?;
 
-            value.span.between(end.span).wrap(Self::Array(Box::new(value), size))
-        } else {
-            value
-        };
+            value = value.span.between(end.span).wrap(Self::Array(Box::new(value), kind));
+        }
 
         Ok(value)
     }

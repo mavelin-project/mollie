@@ -1,4 +1,7 @@
+#![allow(missing_docs)]
+
 mod adt;
+mod diagnostic;
 mod error;
 mod primitive_type;
 mod solver;
@@ -10,24 +13,26 @@ use mollie_index::new_idx_type;
 
 pub use self::{
     adt::{Adt, AdtKind, AdtVariant, AdtVariantField},
-    error::{LookupType, SpecialAdtKind, TypeError, TypeErrorValue},
+    diagnostic::{Diagnostic, DiagnosticContext, DiagnosticDisplay},
+    error::{DefinitionType, LookupType, SpecialAdtKind, TypeError, TypeErrorValue},
     primitive_type::{IntType, PrimitiveType, UIntType},
-    solver::{TypeFrameRef, TypeSolver},
-    ty::{Type, TypeRef},
+    solver::{TypeFrameRef, TypeSolver, UnifyArgs, UnifyError},
+    ty::{ArrayKind, Type, TypeRef},
     type_context::{
-        Func, IntrinsicKind, LangItemValue, Module, ModuleDisplay, ModuleItem, Trait, TraitFunc, TypeContext, TypeDisplay, TypeStorage, VTableFunc,
-        VTableGenerator,
+        Accessor, Bound, Const, DefRegistry, Func, ImplRegistry, IntrinsicKind, LangItemValue, LookupError, Module, ModuleDisplay, ModuleItem, ModuleSpan, Trait,
+        TraitFunc, TyCtxt, TypeDisplay, TypeStorage, VTableFunc, VTableGenerator,
     },
-    type_info::{TypeInfo, TypeInfoRef},
+    type_info::{AdtTypeInfo, ArrayKindInfo, ArrayTypeInfo, FuncTypeInfo, TraitTypeInfo, TypeInfo, TypeInfoRef},
 };
 
 new_idx_type!(AdtRef);
 new_idx_type!(AdtVariantRef);
 new_idx_type!(FieldRef);
 new_idx_type!(TraitRef);
-new_idx_type!(VTableRef);
+new_idx_type!(ImplRef);
 new_idx_type!(VFuncRef);
 new_idx_type!(FuncRef);
+new_idx_type!(ConstRef);
 new_idx_type!(TraitFuncRef);
 new_idx_type!(ModuleId);
 new_idx_type!(TypeErrorRef);
@@ -67,6 +72,7 @@ pub struct CoreTypes<T> {
     pub u64: T,
     pub usize: T,
     pub f32: T,
+    pub f64: T,
     pub string: T,
 }
 
@@ -89,6 +95,7 @@ impl<T: Copy> CoreTypes<T> {
                 UIntType::U8 => self.u8,
             },
             PrimitiveType::F32 => self.f32,
+            PrimitiveType::F64 => self.f64,
             PrimitiveType::Bool => self.bool,
             PrimitiveType::String => self.string,
             PrimitiveType::Void => self.void,

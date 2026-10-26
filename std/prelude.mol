@@ -1,0 +1,11 @@
+// Items visible in every module, unless a module declares or imports an
+// item with the same name.
+
+pub import { Option } from super::option;
+pub import { Result } from super::result;
+pub import { Iterable, Iterator } from super::iter;
+pub import { Container } from super::container;
+pub import { Range } from super::range;
+pub import { PI, TAU, E, PI_F64, TAU_F64, E_F64 } from super::math;
+pub import { Eq, Hash } from super::hash;
+pub import { Map, Set, Entry } from super::collections;

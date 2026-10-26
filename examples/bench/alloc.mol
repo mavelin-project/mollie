@@ -1,0 +1,24 @@
+// Allocation and garbage collection: `n` small objects, each kept a while in
+// a ring of 1024 (older ones become garbage). Returns the sum of their
+// fields.
+
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+let ring: Point[] = [];
+let mut sum: i64 = 0;
+
+for i in 0..1024 {
+    ring.push(Point { x: 0, y: 0 });
+}
+
+for i in 0..n {
+    let point = Point { x: i, y: i * 2 };
+
+    ring[(i & 1023) as usize] = point;
+    sum += (point.x + point.y) as i64;
+}
+
+sum

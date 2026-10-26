@@ -5,6 +5,7 @@ use crate::{Ident, Parse, ParseResult, Parser};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct ModuleDecl {
+    pub public: bool,
     pub name: Positioned<Ident>,
 }
 
@@ -14,6 +15,6 @@ impl Parse for ModuleDecl {
         let name = Ident::parse(parser)?;
         let end = parser.consume(&Token::Semi)?;
 
-        Ok(start.between(&end).wrap(Self { name }))
+        Ok(start.between(&end).wrap(Self { public: false, name }))
     }
 }

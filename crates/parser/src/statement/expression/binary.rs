@@ -1,4 +1,3 @@
-// use std::fmt;
 
 use mollie_lexer::Token;
 use mollie_shared::{Operator, Positioned};
@@ -12,27 +11,46 @@ pub struct BinaryExpr {
     pub operator: Positioned<Operator>,
 }
 
-// impl fmt::Display for BinaryExpression {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{} {} {}", self.lhs, self.operator, self.rhs)
-//     }
-// }
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+pub struct RangeExpr {
+    pub start: Box<Positioned<Expr>>,
+    pub end: Box<Positioned<Expr>>,
+    pub inclusive: bool,
+}
+
+impl RangeExpr {
+    pub fn parse(parser: &mut Parser, start: Positioned<Expr>, is_limited_expr: bool) -> ParseResult<Positioned<Self>> {
+        let inclusive = parser
+            .consume_map(|token| match token {
+                Token::DotDot => Some(false),
+                Token::DotDotEq => Some(true),
+                _ => None,
+            })?
+            .value;
+        let end = Expr::parse_pratt_expr(parser, Precedence::PRange, is_limited_expr)?;
+
+        Ok(start.between(&end).wrap(Self {
+            start: Box::new(start),
+            end: Box::new(end),
+            inclusive,
+        }))
+    }
+}
 
 impl BinaryExpr {
-    /// # Errors
-    ///
-    /// Returns `ParseError` if parsing failed
     pub fn parse(parser: &mut Parser, lhs: Positioned<Expr>, is_limited_expr: bool) -> ParseResult<Positioned<Self>> {
-        let peeked = parser.peek().ok_or_else(|| ParseError::new("expected operator", None))?;
+        let (precedence, operator, tokens) = Precedence::peek(parser);
+        let first = parser.current();
+        let operator = operator.ok_or_else(|| ParseError::expected_tokens(&[Token::Plus, Token::Minus, Token::Star, Token::Slash], first))?;
+        let mut span = first.span;
 
-        let (precedence, operator) = Precedence::from_ref(&peeked.value);
+        for _ in 0..tokens {
+            if let Some(token) = parser.next() {
+                span = span.between(token.span);
+            }
+        }
 
-        let operator = peeked
-            .span
-            .wrap(operator.ok_or_else(|| ParseError::expected_tokens(&[Token::Plus, Token::Minus, Token::Star, Token::Slash], Some(peeked)))?);
-
-        parser.next();
-
+        let operator = span.wrap(operator);
         let rhs = Expr::parse_pratt_expr(parser, precedence, is_limited_expr)?;
 
         Ok(lhs.between(&rhs).wrap(Self {

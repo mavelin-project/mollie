@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::{
     fmt,
     hash::Hash,
@@ -9,7 +11,8 @@ use serde::Serialize;
 
 #[macro_export]
 macro_rules! new_idx_type {
-    ($name:ident) => {
+    ($(#[$attribute:meta])* $name:ident) => {
+        $(#[$attribute])*
         #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize))]
         #[repr(transparent)]

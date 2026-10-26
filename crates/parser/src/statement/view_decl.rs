@@ -1,10 +1,11 @@
 use mollie_lexer::Token;
 use mollie_shared::Positioned;
 
-use crate::{Attribute, Expr, Ident, NameWithGenerics, NodeExpr, Parse, ParseResult, Parser, Type};
+use crate::{Attribute, Expr, Ident, NameWithGenerics, NodeExpr, Parse, ParseResult, Parser, Type, statement::struct_decl::parse_field_visibility};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct ViewProperty {
+    pub public: bool,
     pub name: Positioned<Ident>,
     pub nullable: Option<Positioned<bool>>,
     pub ty: Positioned<Type>,
@@ -13,9 +14,7 @@ pub struct ViewProperty {
 
 impl Parse for ViewProperty {
     fn parse(parser: &mut Parser) -> ParseResult<Positioned<Self>> {
-        parser.verify_if(Token::is_ident)?;
-        parser.verify2_if(|token| matches!(token, Token::Colon | Token::Question))?;
-
+        let public = parse_field_visibility(parser)?;
         let name = Ident::parse(parser)?;
         let nullable = parser.consume(&Token::Question).map(|v| v.map(|_| true)).ok();
 
@@ -26,6 +25,7 @@ impl Parse for ViewProperty {
         let default_value = if parser.try_consume(&Token::Eq) { Some(Expr::parse(parser)?) } else { None };
 
         Ok(name.span.between(ty.span).wrap(Self {
+            public,
             name,
             nullable,
             ty,
@@ -36,6 +36,7 @@ impl Parse for ViewProperty {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct ViewDecl {
+    pub public: bool,
     pub attributes: Vec<Positioned<Attribute>>,
     pub name: Positioned<NameWithGenerics>,
     pub inherits: Option<Positioned<Ident>>,
@@ -60,7 +61,11 @@ impl ViewDecl {
         let mut properties = Vec::new();
 
         loop {
-            if !properties.is_empty() && parser.check2_if(Token::is_ident) && parser.check3(&Token::Colon) {
+            // A comma before the next property (`name:` or `pub name:`).
+            if !properties.is_empty()
+                && parser.check(&Token::Comma)
+                && (parser.check2_if(Token::is_ident) && parser.check3(&Token::Colon) || parser.check2(&Token::Pub))
+            {
                 parser.consume(&Token::Comma)?;
             }
 
@@ -70,15 +75,10 @@ impl ViewDecl {
             }
         }
 
-        // let view = if (parser.try_consume(&Token::Comma) || properties.is_empty()) &&
-        // parser.check_if(Token::is_ident) {     Some(NodeExpr::parse(parser)?)
-        // } else {
-        //     None
-        // };
-
         let end = parser.consume(&Token::BraceClose)?;
 
         Ok(name.span.between(end.span).wrap(Self {
+            public: false,
             attributes,
             name,
             inherits,

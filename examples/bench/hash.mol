@@ -1,0 +1,14 @@
+// Integer work: `n` steps of a 64-bit xorshift generator, adding up the low
+// bits of every value. Returns the sum.
+
+let mut state: i64 = 88172645463325252;
+let mut sum: i64 = 0;
+
+for i in 0..n {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    sum += state & 1023;
+}
+
+sum

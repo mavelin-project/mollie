@@ -5,12 +5,13 @@ use crate::{Ident, Parse, ParseResult, Parser, TypePathExpr, TypePathSegment};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub enum ImportKind {
-    Partial(Positioned<Vec<Positioned<Ident>>>), // import { a, b } from "module";
-    Named,                                       // import "module";
+    Partial(Positioned<Vec<Positioned<Ident>>>), // import { a, b } from module;
+    Named, // import module;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
 pub struct Import {
+    pub public: bool,
     pub kind: ImportKind,
     pub path: Positioned<TypePathExpr>,
 }
@@ -22,7 +23,8 @@ impl Parse for Import {
         let kind = if parser.check(&Token::BraceOpen) {
             let values = parser.consume_separated_in(&Token::Comma, &Token::BraceOpen, &Token::BraceClose)?;
 
-            parser.consume(&Token::From)?;
+            // `from` isn't a keyword (it's a fine name elsewhere).
+            parser.consume_map(|token| if matches!(token, Token::Ident(name) if name == "from") { Some(()) } else { None })?;
 
             ImportKind::Partial(values)
         } else {
@@ -40,6 +42,6 @@ impl Parse for Import {
         )?;
         let end = parser.consume(&Token::Semi)?;
 
-        Ok(start.between(&end).wrap(Self { kind, path }))
+        Ok(start.between(&end).wrap(Self { public: false, kind, path }))
     }
 }

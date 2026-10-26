@@ -1,0 +1,13 @@
+[book]
+title = "Mollie"
+language = "en"
+src = "src"
+
+[rust]
+edition = "2024"
+
+[output.html]
+additional-js = ["theme/mollie.js"]
+
+[output.html.playground]
+runnable = false

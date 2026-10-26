@@ -6,7 +6,7 @@ use mollie_shared::{Positioned, Span};
 pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct ParseError(pub String, pub Option<Span>);
+pub struct ParseError(pub String, pub Span);
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -17,7 +17,7 @@ impl fmt::Display for ParseError {
 impl Error for ParseError {}
 
 impl ParseError {
-    pub fn new<T: Into<String>>(value: T, span: Option<Span>) -> Self {
+    pub fn new<T: Into<String>>(value: T, span: Span) -> Self {
         Self(value.into(), span)
     }
 
@@ -27,25 +27,19 @@ impl ParseError {
     }
 
     #[must_use]
-    pub const fn location(&self) -> Option<Span> {
+    pub const fn location(&self) -> Span {
         self.1
     }
 
-    pub fn unexpected_token(token: Option<&Positioned<Token>>) -> Self {
-        token.map_or_else(
-            || Self("Unexpected nothing".to_string(), None),
-            |token| Self(format!("Unexpected {}", token.value), Some(token.span)),
-        )
+    pub fn unexpected_token(token: &Positioned<Token>) -> Self {
+        Self(format!("Unexpected {}", token.value), token.span)
     }
 
-    pub fn expected_token(expected: &Token, found: Option<&Positioned<Token>>) -> Self {
-        found.map_or_else(
-            || Self(format!("Expected {expected}, found nothing"), None),
-            |found| Self(format!("Expected {expected}, found {}", found.value), Some(found.span)),
-        )
+    pub fn expected_token(expected: &Token, found: &Positioned<Token>) -> Self {
+        Self(format!("Expected {expected}, found {}", found.value), found.span)
     }
 
-    pub fn expected_tokens(expected: &[Token], found: Option<&Positioned<Token>>) -> Self {
+    pub fn expected_tokens(expected: &[Token], found: &Positioned<Token>) -> Self {
         let expected = match expected.len() {
             0 => "nothing".into(),
             1 => expected[0].to_string(),
@@ -59,14 +53,6 @@ impl ParseError {
             }
         };
 
-        found.map_or_else(
-            || Self(format!("Expected {expected}, found nothing"), None),
-            |found| Self(format!("Expected {expected}, found {}", found.value), Some(found.span)),
-        )
-    }
-
-    #[must_use]
-    pub fn too_much_tokens(tokens: &[Positioned<Token>]) -> Self {
-        Self(format!("found more than zero ({}) tokens after parsing: {tokens:#?}", tokens.len()), None)
+        Self(format!("Expected {expected}, found {}", found.value), found.span)
     }
 }

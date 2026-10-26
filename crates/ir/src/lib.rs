@@ -1,73 +1,96 @@
+#![allow(missing_docs)]
+
 mod ptr;
 mod ty;
-mod utils;
 
-use std::fmt;
+use std::{fmt, mem::ManuallyDrop};
 
 use cranelift::{
     codegen::ir,
     jit::{JITBuilder, JITModule},
-    module::{DataDescription, DataId, Module, ModuleResult, default_libcall_names},
+    module::{DataDescription, DataId, Module, ModuleError, default_libcall_names},
     native,
     prelude::settings,
 };
 
 pub use self::{
-    ptr::{FatPtr, VTablePtr},
-    ty::{Array, ConstValue, ConstantCompiler, Field, Struct, compile_constant},
-    utils::stack_alloc,
+    ptr::VTablePtr,
+    ty::{Field, Struct},
 };
 
 pub type Symbol = (&'static str, *const u8);
+
 pub struct CodeGenerator<M: Module> {
-    pub module: M,
+    pub module: ManuallyDrop<M>,
     pub data_desc: DataDescription,
+    release: Option<unsafe fn(M)>,
+}
+
+impl<M: Module> Drop for CodeGenerator<M> {
+    fn drop(&mut self) {
+        // SAFETY: the module isn't used after this.
+        let module = unsafe { ManuallyDrop::take(&mut self.module) };
+
+        match self.release {
+            // SAFETY: the owner of the generator (the compiler) is dropped, so
+            // nothing can call its code anymore.
+            Some(release) => unsafe { release(module) },
+            None => drop(module),
+        }
+    }
+}
+
+unsafe fn release_jit(module: JITModule) {
+    unsafe { module.free_memory() };
 }
 
 impl<M: Module> fmt::Debug for CodeGenerator<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("JitCompiler").field("data_desc", &self.data_desc).finish_non_exhaustive()
+        f.debug_struct("CodeGenerator").field("data_desc", &self.data_desc).finish_non_exhaustive()
     }
 }
 
 impl CodeGenerator<JITModule> {
     pub fn new<I: IntoIterator<Item = Symbol>>(symbols: I, flags: settings::Flags) -> Self {
-        let mut builder = JITBuilder::with_isa(native::builder().unwrap().finish(flags).unwrap(), default_libcall_names());
+        let isa = native::builder()
+            .expect("host machine is not supported")
+            .finish(flags)
+            .expect("invalid ISA flags");
+        let mut builder = JITBuilder::with_isa(isa, default_libcall_names());
 
         for (name, ptr) in symbols {
             builder.symbol(name, ptr);
         }
 
         Self {
-            module: JITModule::new(builder),
+            module: ManuallyDrop::new(JITModule::new(builder)),
             data_desc: DataDescription::new(),
+            release: Some(release_jit),
         }
     }
 }
 
 impl<M: Module> CodeGenerator<M> {
-    pub fn static_data<T: Into<Box<[u8]>>>(&mut self, data: T) -> ModuleResult<DataId> {
-        let data = data.into();
+    pub fn static_data<T: Into<Box<[u8]>>>(&mut self, data: T) -> Result<DataId, Box<ModuleError>> {
+        self.data_desc.define(data.into());
 
-        self.data_desc.define(data);
+        let id = self.module.declare_anonymous_data(false, false)?;
+        let result = self.module.define_data(id, &self.data_desc);
 
-        let id = self.module.declare_anonymous_data(false, false).unwrap();
-
-        self.module.define_data(id, &self.data_desc).unwrap();
         self.data_desc.clear();
 
-        Ok(id)
+        Ok(result.map(|()| id)?)
     }
 
-    pub fn static_zeroed(&mut self, size: usize) -> ModuleResult<DataId> {
+    pub fn static_zeroed(&mut self, size: usize) -> Result<DataId, Box<ModuleError>> {
         self.data_desc.define_zeroinit(size);
 
         let id = self.module.declare_anonymous_data(true, false)?;
+        let result = self.module.define_data(id, &self.data_desc);
 
-        self.module.define_data(id, &self.data_desc)?;
         self.data_desc.clear();
 
-        Ok(id)
+        Ok(result.map(|()| id)?)
     }
 }
 
@@ -75,6 +98,33 @@ impl<M: Module> CodeGenerator<M> {
 pub enum MollieType {
     Regular(ir::Type),
     Fat(ir::Type, ir::Type),
+    Inline {
+        size: u32,
+        align: u32,
+    },
+}
+
+pub fn chunks(size: u32) -> Vec<(ir::Type, u32)> {
+    let mut chunks = Vec::new();
+    let mut offset = 0;
+
+    while offset < size {
+        let chunk = [8, 4, 2, 1]
+            .into_iter()
+            .find(|&chunk| chunk <= size - offset && offset % chunk == 0)
+            .unwrap_or(1);
+        let ty = match chunk {
+            8 => ir::types::I64,
+            4 => ir::types::I32,
+            2 => ir::types::I16,
+            _ => ir::types::I8,
+        };
+
+        chunks.push((ty, offset));
+        offset += chunk;
+    }
+
+    chunks
 }
 
 impl MollieType {
@@ -82,22 +132,36 @@ impl MollieType {
         match self {
             Self::Regular(ty) => ty.bytes(),
             Self::Fat(ty, metadata_ty) => ty.bytes() + metadata_ty.bytes(),
+            Self::Inline { size, .. } => *size,
+        }
+    }
+
+    pub fn align(&self) -> u32 {
+        match self {
+            Self::Regular(ty) => ty.bytes(),
+            Self::Fat(ty, metadata_ty) => {
+                if ty.bytes() > metadata_ty.bytes() {
+                    ty.bytes()
+                } else {
+                    metadata_ty.bytes()
+                }
+            }
+            Self::Inline { align, .. } => *align,
+        }
+    }
+
+    pub fn components(&self) -> Vec<ir::Type> {
+        match *self {
+            Self::Regular(ty) => vec![ty],
+            Self::Fat(ty, metadata_ty) => vec![ty, metadata_ty],
+            Self::Inline { size, .. } => chunks(size).into_iter().map(|(ty, _)| ty).collect(),
         }
     }
 
     pub fn add_to_params(self, params: &mut Vec<ir::AbiParam>) {
-        match self {
-            Self::Regular(ty) => params.push(ir::AbiParam::new(ty)),
-            Self::Fat(ty, metadata_ty) => {
-                params.push(ir::AbiParam::new(ty));
-                params.push(ir::AbiParam::new(metadata_ty));
-            }
-        }
+        params.extend(self.components().into_iter().map(ir::AbiParam::new));
     }
 
-    /// Returns `true` if the mollie type is [`Fat`].
-    ///
-    /// [`Fat`]: MollieType::Fat
     #[must_use]
     pub const fn is_fat(&self) -> bool {
         matches!(self, Self::Fat(..))

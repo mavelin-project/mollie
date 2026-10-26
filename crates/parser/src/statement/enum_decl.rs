@@ -25,7 +25,11 @@ impl Parse for EnumVariant {
         parser.verify_if(Token::is_ident)?;
 
         let name = Ident::parse(parser)?;
-        let properties = parser.consume_separated_in(&Token::Comma, &Token::BraceOpen, &Token::BraceClose).ok();
+        let properties = if parser.check(&Token::BraceOpen) {
+            Some(parser.consume_separated_in(&Token::Comma, &Token::BraceOpen, &Token::BraceClose)?)
+        } else {
+            None
+        };
 
         Ok(if let Some(properties) = &properties {
             name.span.between(properties.span)
@@ -38,7 +42,9 @@ impl Parse for EnumVariant {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
 pub struct EnumDecl {
+    pub public: bool,
     pub attributes: Vec<Positioned<Attribute>>,
+    pub value: bool,
     pub name: Positioned<NameWithGenerics>,
     pub variants: Positioned<Vec<Positioned<EnumVariant>>>,
 }
@@ -50,6 +56,12 @@ impl EnumDecl {
         let name = NameWithGenerics::parse(parser)?;
         let variants = parser.consume_separated_in(&Token::Comma, &Token::BraceOpen, &Token::BraceClose)?;
 
-        Ok(name.span.between(variants.span).wrap(Self { attributes, name, variants }))
+        Ok(name.span.between(variants.span).wrap(Self {
+            public: false,
+            attributes,
+            value: false,
+            name,
+            variants,
+        }))
     }
 }

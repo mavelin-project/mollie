@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::{
     hash::{Hash, Hasher},
     mem::discriminant,
@@ -16,6 +18,7 @@ pub enum ConstantValue {
     ISize(isize),
     USize(usize),
     F32(f32),
+    F64(f64),
     Bool(bool),
     Array(Box<[Self]>),
     String(String),
@@ -98,6 +101,24 @@ impl From<usize> for ConstantValue {
 impl From<f32> for ConstantValue {
     fn from(value: f32) -> Self {
         Self::F32(value)
+    }
+}
+
+impl From<f64> for ConstantValue {
+    fn from(value: f64) -> Self {
+        Self::F64(value)
+    }
+}
+
+impl From<&str> for ConstantValue {
+    fn from(value: &str) -> Self {
+        Self::String(value.to_owned())
+    }
+}
+
+impl From<String> for ConstantValue {
+    fn from(value: String) -> Self {
+        Self::String(value)
     }
 }
 

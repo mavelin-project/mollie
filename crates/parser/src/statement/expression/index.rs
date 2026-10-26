@@ -30,9 +30,6 @@ pub struct IndexExpr {
 }
 
 impl IndexExpr {
-    /// # Errors
-    ///
-    /// Returns error if parsing failed
     pub fn parse(parser: &mut Parser, target: Positioned<Expr>) -> ParseResult<Positioned<Self>> {
         let index = IndexTarget::parse(parser)?;
 
