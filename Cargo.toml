@@ -55,7 +55,7 @@ mollie-parser = { path = "./crates/parser" }
 mollie-compiler = { path = "./crates/compiler" }
 mollie-typing = { path = "./crates/typing" }
 
-cranelift = { version = "0.136.1", features = [
+cranelift = { version = "0.137.0", features = [
     "jit",
     "module",
     "interpreter",

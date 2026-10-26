@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::{
     hint::black_box,
     path::{Path, PathBuf},
